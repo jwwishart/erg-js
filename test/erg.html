@@ -1,0 +1,164 @@
+<html>
+    <head>
+        <title></title>
+        <script src="../src/erg.js"></script>
+        <script src="../src/erg.target.javascript.js"></script>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/default.min.css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.0/lodash.min.js"></script>
+
+        <style type="text/css">
+            .panel {
+                width:  33%;
+                padding: 0;
+                margin: 0;
+                display: inline-block;
+                vertical-align: top;
+            }
+        </style>
+    </head>
+    <body>
+
+<textarea id='code' cols="50" rows="25" class="panel" style='height: 800px'>
+message := "Hello World";
+print(message);
+
+age := 100;
+print(age);
+
+// TODO(jwwishart) assignment to existing
+// variable
+// TODO(jwwishart) verify types match!!!
+//age = 51;
+//print(age);
+
+/*
+    this is a test
+
+    /* comment out this internally !! :o) */
+*/
+
+// TODO(jwwishart) Error on assignment 
+// to a variable that doesn't exist
+// me_dont_exist = false;
+
+something := null;
+print(something);
+is_bool := true;
+print(is_bool);
+
+thing := 12 + 15;
+
+print(message);
+print(thing);
+
+multiple_args :: (one, two) {
+  print(one);
+  print(two);
+}
+
+multiple_args(1, 2);
+
+//@
+
+// TODO(jwwishart) this doesn't 
+// work with multiple arguments
+my_print :: (ages : int) {
+  d := ages + age;
+  print(d);
+}
+
+my_print(12);
+
+
+// TODO List
+// - Test for unused parameters
+</textarea>
+
+<pre class="panel">
+<code id='highlighted' class='cpp'>
+</code>
+</pre>
+
+<pre class="panel">
+<code id='output' class='javascript'>
+</code>
+</pre>
+
+
+        <input type="button" value="Execute" onclick="exec();" />
+
+
+
+        <script>
+            if (localStorage.getItem('code') != null && localStorage.getItem('code').length > 0) {
+                document.getElementById('code').value = localStorage.getItem('code');
+            }
+
+            $("#code").on("change keyup", function() {
+                codeChangedDebounced();
+            });
+
+            function codeChanged() {
+                if (localStorage.getItem('oldCode') == null) {
+                    localStorage.setItem('oldCode', JSON.stringify([]));
+                }
+
+                var oldCode = JSON.parse(localStorage.getItem("oldCode"));
+                
+                if (oldCode.length > 200) {
+                    oldCode = oldCode.slice(0, 150);
+                }
+
+                console.log("History Length: " + oldCode.length);
+
+                oldCode.push(localStorage.getItem('code'));
+                localStorage.setItem('oldCode', JSON.stringify(oldCode));
+
+                localStorage.setItem("code", document.getElementById('code').value);
+
+                // TODO(jwwishart) throttle updating the height of the textarea!
+                updateHighlighted();
+            }
+
+            var codeChangedDebounced = _.debounce(codeChanged, 500);
+
+            function highlight() {
+              $('pre code').each(function(i, block) {
+                hljs.highlightBlock(block);
+              });   
+            }
+
+            function updateHighlighted() {
+                var code = document.getElementById('code').value;
+                document.getElementById('highlighted').textContent = code;
+
+                highlight();
+            }          
+
+            updateHighlighted();
+
+            // Compile Handler
+            function exec() {
+                var code = document.getElementById('code').value;
+                var output = document.getElementById('output');
+                output.textContent = erg.compile(code, true);;
+
+                console.log("OUTPUT START -------");
+                eval(output.textContent);
+                console.log("OUTPUT END   -------");
+
+                highlight();
+            }
+
+
+
+            $(document).ready(function() {
+                highlight();
+            });
+        </script>
+
+    </body>
+</html>

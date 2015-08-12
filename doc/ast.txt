@@ -1,0 +1,148 @@
+
+Notes on AST Structure
+
+Scope | used by global, function, block scope (if, while, or just {} etc.)
+    - parentScope
+    - statements[]
+
+    - Identifiers
+        list identifiers 
+            - identifier
+            - isTypeInfered?
+            - parentNode???? How to do this in JS? Can to parents pointer to the node?
+              like in other langs...
+
+Statement:
+    lhs | identifier
+    rhs | expression
+
+    Types:
+        Declaration (lhs is the identifier, rhs is the function or literal or constant or expression)
+
+
+Expression
+    Literal
+        String
+        Number
+        Boolean
+    Operator
+    Constant? (expression would be replaced by the constant for final parsing?
+
+FunctionDeclaration
+    Identifier
+    Parameters
+        Type | Any, built in types
+        Identifier | string
+      + DefaultValue
+    Body | SCOPE!
+           parentScope == outer scope NOT 'this' oddness in JS
+
+
+FunctionCall
+    Identifier
+    Arguments
+        Expressions[] (not just 1 Expression... separate on , and put each expression in
+            Expression could be an identifier
+
+
+
+
+
+Scope (Program)
+    arguments [] -- what is available to the scope!
+        name string
+        initialized bool (default: false)
+    statements []
+
+
+
+
+
+Example
+// Variable Declarations
+str := "Hello World!";
+age := 35;
+
+// Built-in Print Function
+print(str);
+print(age);
+
+// Function Declaration
+my_print :: (a, b) {
+    print(a);
+    print(b);
+}
+
+// Function Call
+my_print("Age", age);
+
+// Working on Returing something
+returnSomething :: () {
+    return "Hello Again World";
+}
+
+
+Scope
+    arguments []
+        1:  name = global, isInitialized = true
+    functions []
+        1:  name = print, isInitialized = true
+    statements: []
+        1:  type = VariableDeclaration
+            identifier = str
+            isInitialized = true
+            value = StringLiteral
+               value = "Hello World!"
+        2:  type = VariableDeclaration
+            identifier = age
+            isInitialized = true
+            value = NumberLiteral
+                value = 35
+        2a: type = VariableDeclaration
+            identifier = calcAge
+            isInitialized = true,
+            value = Expression
+                // TODO: determine calculated type?
+                // TODO: contain all parts
+                
+        3:  type = FunctionCall
+            functionName = print
+            isFound = true
+            isInitialized = true
+            parameters []
+                1:  name = str
+                    type = string
+            arguments: [Expression]
+                1:  type = Identifier
+                    name = str
+                    isFound = true,
+                    isInitialized = true
+        4:  same as 3 almost
+        5:  type = FunctionDeclaration
+            identifier: my_print
+            parameter []
+                1:  identifier = a
+                    type = any
+                    hasDefault = false // future use!
+                2:  identifier = b
+                    type = any
+                    hasDefault = false
+        6:  type = FunctionCall
+            functionName = my_print
+            isfound = true
+            isInitialized = true
+            arguments: [Expression]
+                1:  type = StringLiteral
+                    value = "Age"
+                2:  type = Identifier
+                    isFound = true
+        7:  type = FunctionDeclaration
+            identifier: returnSomething
+            parameter []
+            scope []
+                1:  type ReturnStatement
+                    resultOf [expression]
+
+
+
+

@@ -1,0 +1,27 @@
+{
+  "name": "erg-js",
+  "version": "0.0.1",
+  "description": "javascript compiler targeting javascript based off of jai language by Jonathan Blow",
+  "author": "jwwishart",
+  "license": "ISC",
+  "bin": {
+    "ergjs": "bin/ergjs"
+  },
+  "engines": {
+    "node": ">= 0.8.0"
+  },
+  "scripts": {
+    "test": "node_modules/mocha/bin/mocha"
+  },
+  "preferGlobal": true,
+  "dependencies": {},
+  "devDependencies": {
+    "grunt": "~0.4.1",
+    "grunt-contrib-concat": "^0.5.1",
+    "grunt-contrib-copy": "^0.8.0",
+    "grunt-contrib-jasmine": "^0.9.1",
+    "grunt-contrib-jshint": "~0.1.1",
+    "grunt-contrib-uglify": "~0.2.2",
+    "grunt-contrib-watch": "~0.4.4"
+  }
+}

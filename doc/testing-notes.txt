@@ -1,0 +1,23 @@
+
+// Comments
+//
+
+- Test Single line comments
+- Test multiple lines of single comments
+- Test single line comments JUST before code
+
+- Test multiple line comments
+- Test multiple line comments with NESTED multiple line comments
+
+
+// Variable Declarations
+//
+
+- Variable Declarations with NOTHING assigned
+    REQUIRES A TYPE
+- With literals assigned
+    - string
+        - escape charactesr
+    - int
+    - float
+    - bool

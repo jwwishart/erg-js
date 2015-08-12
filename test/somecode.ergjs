@@ -1,0 +1,50 @@
+// Variable Declarations
+message := "Hello World";
+age := 100;
+trueOrFalse := true;
+
+print(age);
+print(message);
+print(trueOrFalse);
+
+/*
+    this is a test
+
+    /* comment out this internally !! :o) */
+*/
+
+// TODO(jwwishart) Error on assignment 
+// to a variable that doesn't exist
+// me_dont_exist = false;
+
+something := null;
+print(something);
+is_bool := true;
+print(is_bool);
+
+thing := 12 + 15;
+
+print(message);
+print(thing);
+
+multiple_args :: (one, two) {
+  print(one);
+  print(two);
+}
+
+multiple_args(1, 2);
+
+//@
+
+// TODO(jwwishart) this doesn't 
+// work with multiple arguments
+my_print :: (ages : int) {
+  d := ages + age;
+  print(d);
+}
+
+my_print(12);
+
+
+// TODO List
+// - Test for unused parameters
