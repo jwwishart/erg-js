@@ -1,9 +1,10 @@
-'use strict';
 
 var __global = this;
 var erg;
 
 (function() {
+    'use strict';
+
     erg = __global.erg || {};
     __global.erg = erg;
 
@@ -13,467 +14,474 @@ var erg;
         // Common JS
         module.exports = erg;
     }
-}(this));
 
 
 
 
 
-// @Helpers --------------------------------------------------------------------
-//
 
-function generate_global_constants(setName, arr) {
-    if (!erg._global_constants) {
-        erg._global_constants = [];
-    }
-
-    erg._global_constants[setName] = erg._global_constants[setName] || {};
-
-    var i = 0;
-
-    for (var k in arr) {
-        erg._global_constants[setName][arr[k]] = __global[arr[k]] = i++;
-        erg._global_constants[setName][k] = arr[k];
-    }
-}
-
-function get_global_constant_name (setName, number) {
-    return erg._global_constants[setName][number];
-}
-
-
-// @Scanner ----------------------------------------------------------------
-// 
-
-erg.createScanner = function create_scanner(code) {
-    var i = 0;
-    var firstCol = 1;
-
-    var lineNo = 1;
-    var colNo = firstCol;
-
-    return {
-        peek: function() {
-            if (i < code.length) {
-                return code[i];
-            }
-
-            return null;
-        },
-        eat: function() {
-            // NOTE: Do the line and char stuff when you eat, not 
-            // before!
-            if (code[i] === '\n') {
-                lineNo++;
-                colNo = firstCol - 1; // we will increment by one below so we need to remove that here!
-            }
-
-            i++;
-            colNo++;
-        },
-
-        get_position_info: function() {
-            return {
-                lineNo: lineNo,
-                colNo: colNo
-            };
-        }
-    };
-}
-
-
-// @Tokenizer -------------------------------------------------------------
-// 
-
-generate_global_constants('TOKEN_TYPES', [
-    'TOKEN_TYPE_UNKNOWN', // TODO(jwwishart) what? why would we need this... why not throw an exception
-    'TOKEN_TYPE_NULL',
-    
-    'TOKEN_TYPE_WHITESPACE',
-    'TOKEN_TYPE_COMMENT_SINGLE_LINE',
-
-    'TOKEN_TYPE_IDENTIFIER',
-
-    // Literals
-    'TOKEN_TYPE_STRING_LITERAL',
-    'TOKEN_TYPE_NUMBER_LITERAL',
-    'TOKEN_TYPE_BOOLEAN_LITERAL',
-
-    // Punctuation
-    'TOKEN_TYPE_PAREN_OPEN',
-    'TOKEN_TYPE_PAREN_CLOSE',
-    'TOKEN_TYPE_BRACE_OPEN',
-    'TOKEN_TYPE_BRACE_CLOSE',
-
-    'TOKEN_TYPE_SEMICOLON',
-
-    'TOKEN_TYPE_SINGLE_COLON',
-    'TOKEN_TYPE_DOUBLE_COLON',
-    'TOKEN_TYPE_COLON_EQUALS',
-
-    'TOKEN_TYPE_COMMA',
-
-    // Keywords
-    'TOKEN_TYPE_KEYWORD_RETURN',
-
-    // Symbols
-    'TOKEN_TYPE_PLUS'
-]);
-
-erg.createTokenizer = function(scanner) {
-    var CharToToken = {
-        ' '  : TOKEN_TYPE_WHITESPACE,
-        '\t' : TOKEN_TYPE_WHITESPACE,
-        '\n' : TOKEN_TYPE_WHITESPACE,
-
-        '('  : TOKEN_TYPE_PAREN_OPEN,
-        ')'  : TOKEN_TYPE_PAREN_CLOSE,
-
-        '{'  : TOKEN_TYPE_BRACE_OPEN,
-        '}'  : TOKEN_TYPE_BRACE_CLOSE,
-
-        ';'  : TOKEN_TYPE_SEMICOLON,
-        ','  : TOKEN_TYPE_COMMA,
-        
-        '+'  : TOKEN_TYPE_PLUS
-    }
-
-    var token = null;
-    var c;
-    var multilineCommentDepth = 0;
-
-
-    // Char Traversal
+    // @Helpers --------------------------------------------------------------------
     //
 
-    function peek() {
-        return scanner.peek();
+    function generate_global_constants(setName, arr) {
+        if (!erg._global_constants) {
+            erg._global_constants = [];
+        }
+
+        erg._global_constants[setName] = erg._global_constants[setName] || {};
+
+        var i = 0;
+
+        for (var k in arr) {
+            erg._global_constants[setName][arr[k]] = __global[arr[k]] = i++;
+            erg._global_constants[setName][k] = arr[k];
+        }
     }
 
-    function eat() {
-        scanner.eat();
+    function get_global_constant_name (setName, number) {
+        return erg._global_constants[setName][number];
     }
 
-    function set_location(token) {
-        var pos = scanner.get_position_info();
-        token.lineNo = pos.lineNo;
-        token.colNo = pos.colNo;
-    }
 
-    function create_token(type, text) {
-        var pos = scanner.get_position_info();
+    // @Scanner ----------------------------------------------------------------
+    // 
+
+    erg.createScanner = function create_scanner(code) {
+        var i = 0;
+        var firstCol = 1;
+
+        var lineNo = 1;
+        var colNo = firstCol;
 
         return {
-            type: type,
-            typeName: get_global_constant_name('TOKEN_TYPES', type),
-            text: text,
-            lineNo: pos.lineNo,
-            colNo: pos.colNo
+            peek: function() {
+                if (i < code.length) {
+                    return code[i];
+                }
+
+                return null;
+            },
+            eat: function() {
+                // NOTE: Do the line and char stuff when you eat, not 
+                // before!
+                if (code[i] === '\n') {
+                    lineNo++;
+                    colNo = firstCol - 1; // we will increment by one below so we need to remove that here!
+                }
+
+                i++;
+                colNo++;
+            },
+
+            get_position_info: function() {
+                return {
+                    lineNo: lineNo,
+                    colNo: colNo
+                };
+            }
         };
-    }
+    };
 
 
-    // Parse Special Token Scenarios
-    //
+    // @Tokenizer -------------------------------------------------------------
+    // 
 
-    function get_identifier() {
-        var result = '';
+    generate_global_constants('TOKEN_TYPES', [
+        'TOKEN_TYPE_UNKNOWN', // TODO(jwwishart) what? why would we need this... why not throw an exception
+        'TOKEN_TYPE_NULL',
+        
+        'TOKEN_TYPE_WHITESPACE',
+        'TOKEN_TYPE_COMMENT_SINGLE_LINE',
 
-        while ((c = peek()) !== null) {
-            // Whitespace
-            if (/[a-zA-Z0-9_]/gi.test(c) === false) {            
-                // eat(); dont eat something that is not suitable
-                break;
-            }
+        'TOKEN_TYPE_IDENTIFIER',
 
-            result += c;
-            eat();
+        // Literals
+        'TOKEN_TYPE_STRING_LITERAL',
+        'TOKEN_TYPE_NUMBER_LITERAL',
+        'TOKEN_TYPE_BOOLEAN_LITERAL',
+
+        // Punctuation
+        'TOKEN_TYPE_PAREN_OPEN',
+        'TOKEN_TYPE_PAREN_CLOSE',
+        'TOKEN_TYPE_BRACE_OPEN',
+        'TOKEN_TYPE_BRACE_CLOSE',
+
+        'TOKEN_TYPE_SEMICOLON',
+
+        'TOKEN_TYPE_SINGLE_COLON',
+        'TOKEN_TYPE_DOUBLE_COLON',
+        'TOKEN_TYPE_COLON_EQUALS',
+
+        'TOKEN_TYPE_COMMA',
+
+        // Keywords
+        'TOKEN_TYPE_KEYWORD_RETURN',
+
+        // Symbols
+        'TOKEN_TYPE_PLUS'
+    ]);
+
+    erg.createTokenizer = function(scanner) {
+        var CharToToken = {
+            ' '  : TOKEN_TYPE_WHITESPACE,
+            '\t' : TOKEN_TYPE_WHITESPACE,
+            '\n' : TOKEN_TYPE_WHITESPACE,
+            '\r' : TOKEN_TYPE_WHITESPACE,
+
+            '('  : TOKEN_TYPE_PAREN_OPEN,
+            ')'  : TOKEN_TYPE_PAREN_CLOSE,
+
+            '{'  : TOKEN_TYPE_BRACE_OPEN,
+            '}'  : TOKEN_TYPE_BRACE_CLOSE,
+
+            ';'  : TOKEN_TYPE_SEMICOLON,
+            ','  : TOKEN_TYPE_COMMA,
+            
+            '+'  : TOKEN_TYPE_PLUS
+        };
+
+        var token = null;
+        var c;
+        var multilineCommentDepth = 0;
+
+
+        // Char Traversal
+        //
+
+        function peek() {
+            return scanner.peek();
         }
 
-        return result;
-    }
-
-    function get_string_literal() {
-        eat(); // Eat the initial "
-        var result = '';
-
-        // TODO(jwwishart) handle herestrings
-        // TODO(jwwishart) what aout single quotes? ' maybe NOT!
-        // TODO(jwwishart) character literals?
-        // TODO(jwwishart) Escape characters. Implement
-
-        while ((c = peek()) !== null) {
-            // Whitespace
-            if (c === '"'){
-                eat(); // Eat the final "
-                break;
-            }
-
-            result += c;
-            eat();
+        function eat() {
+            scanner.eat();
         }
 
-        return result;
-    }
+        function set_location(token) {
+            var pos = scanner.get_position_info();
+            token.lineNo = pos.lineNo;
+            token.colNo = pos.colNo;
+        }
+
+        function create_token(type, text) {
+            var pos = scanner.get_position_info();
+
+            return {
+                type: type,
+                typeName: get_global_constant_name('TOKEN_TYPES', type),
+                text: text,
+                lineNo: pos.lineNo,
+                colNo: pos.colNo
+            };
+        }
 
 
-    function get_number_literal() {
-        var result = '';
+        // Parse Special Token Scenarios
+        //
 
-        // TODO(jwwishart) floats, decimal, hex, exponents etc.
+        function get_identifier() {
+            var result = '';
 
-        while((c = peek()) !== null) {
-            if (c >= '0' && c <= '9') {
+            while ((c = peek()) !== null) {
+                // Whitespace
+                if (/[a-zA-Z0-9_]/gi.test(c) === false) {
+                    // eat(); dont eat something that is not suitable
+                    break;
+                }
+
                 result += c;
                 eat();
-                continue;
             }
 
-            break;
+            return result;
         }
 
-        return result;
-    }
+        function get_string_literal() {
+            eat(); // Eat the initial "
+            var result = '';
 
-    function try_map_char_to_token(c) {
-        var tokKey = CharToToken[c];
+            // TODO(jwwishart) handle herestrings
+            // TODO(jwwishart) what aout single quotes? ' maybe NOT!
+            // TODO(jwwishart) character literals?
+            // TODO(jwwishart) Escape characters. Implement
 
-        if (tokKey === undefined) return null;
+            while ((c = peek()) !== null) {
+                // Whitespace
+                if (c === '"'){
+                    eat(); // Eat the final "
+                    break;
+                }
 
-        token = create_token(tokKey, c);
-        set_location(token);
-        eat();
+                result += c;
+                eat();
+            }
 
-        return token;
-    }
-
-    function eat_while_not(not) {
-        while(move_next() && c !== not) {
+            return result;
         }
-    }
 
-    function move_next() {
-        eat();
-        c = peek();
-        if (c === null) return false;
+
+        function get_number_literal() {
+            var result = '';
+
+            // TODO(jwwishart) floats, decimal, hex, exponents etc.
+
+            while((c = peek()) !== null) {
+                if (c >= '0' && c <= '9') {
+                    result += c;
+                    eat();
+                    continue;
+                }
+
+                break;
+            }
+
+            return result;
+        }
+
+        function try_map_char_to_token(c) {
+            var tokKey = CharToToken[c];
+
+            if (tokKey === undefined) {
+                return null;
+            }
+
+            token = create_token(tokKey, c);
+            set_location(token);
+            eat();
+
+            return token;
+        }
+
+        function eat_while_not(not) {
+            while(move_next() && c !== not) {
+            }
+        }
+
+        function move_next() {
+            eat();
+            c = peek();
+            
+            if (c === null) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // ASSUMPTION(jwwishart) /* are eaten and next c is first char of ...
+        // the multiline comment contents
+        function eat_multiline_comments() {
+            do {
+                if (c === '/' && move_next() && c === '*') {
+                    multilineCommentDepth++;
+                    continue;
+                }
+
+                if (c === '*' && move_next() && c === '/') {
+                    multilineCommentDepth--;
+                    continue;
+                }
+
+                // We have hit the end of the outermost multiline comment
+                if (multilineCommentDepth === -1) {
+                    multilineCommentDepth = 0; // Reset for next time!
+                    break;
+                }
+            }  while(move_next());
+        }
+
+        return {
+            peek: function() {
+                var colNo = 1;
+
+                if (token !== null) {
+                    return token;
+                }
+
+                token = create_token(TOKEN_TYPE_UNKNOWN, '');
+
+                while ((c = peek()) !== null) {
+                    // Get Mappable Char to Tokens
+                    var to_return = try_map_char_to_token(c);
+                    if (to_return !== null) {
+                        // TODO(jwwishart) for now just handle this manually
+                        if (c === ' ' || c === '\t' || c === '\n') {
+                            continue;
+                        }
+
+                        return to_return;
+                    }
+
+                    // Single line Comments
+                    if (c === '/') {
+                        eat();
+
+                        // TODO(jwwishart) double line comments 
+                        // TODO(jwwishart) NESTED double line comments!!!
+
+                        // Multi-line comments
+                        if (peek() === '*') {
+                            eat(); // eat and setup c correctly | eat_multiline_comments assumes /* is gone!
+                            c = peek();
+                            eat_multiline_comments();
+
+                            continue;
+                        }
+
+                        // Single-line comments
+                        if (peek() === '/') {
+                            // Eat till newline
+                            eat_while_not('\n');
+                            
+                            continue;
+                        }
+                    }
+
+                    // String Literals
+                    if (c === '"') {
+                        token = create_token(TOKEN_TYPE_STRING_LITERAL, '');
+                        token.text = get_string_literal();
+
+                        return token;
+                    }
+
+                    // Number Literals
+                    // TODO(jwwishart) ints only, support floats etc.
+                    if (c >= '0' && c <= '9') {
+                        token = create_token(TOKEN_TYPE_NUMBER_LITERAL, '');
+                        token.text = get_number_literal();
+
+                        return token;
+                    }
+
+                    if (c === ':') {
+                        colNo = scanner.get_position_info().colNo;
+
+                        eat();
+
+                        if (peek() === ':') {
+                            token = create_token(TOKEN_TYPE_DOUBLE_COLON, c);
+
+                            eat();
+                        } else if (peek() === '=') {
+                            token = create_token(TOKEN_TYPE_COLON_EQUALS, c);
+
+                            eat();
+                        } else {
+                            // TODO(jwwishart) Get the type identifier
+                            // TODO(jwwishart) Verify the type is in scope! (in the parser!)
+                            token = create_token(TOKEN_TYPE_SINGLE_COLON, c);
+                        }
+
+                        token.colNo = colNo;
+
+                        return token;
+                    }
+
+                    if (/[a-zA-Z]/gi.test(c)) {
+                        token = create_token(TOKEN_TYPE_IDENTIFIER, '');
+                        token.text = get_identifier();
+                        return token;
+                    }
+
+                    var errorCharInfo = scanner.get_position_info();
+
+                    console.error("ERROR: Unexpected character '" + c + "' (ASCII: ' + c.charCodeAt(0) + ') (ln: " + errorCharInfo.lineNo + ", col: " + errorCharInfo.colNo +")");
+                    return null; // we have missed something
+                }
+
+                return null;
+            },
+
+            eat: function() {
+                token = null;
+            }
+        };
+    };
+
+
+    // @Parser --------------------------------------------------------------------
+    //
+
+
+    // TODO(jwwishart) accept and expect ought just take the type and read from the
+    // token stream
+
+    // TODO(jwwishart) Why do we need to pass the parser around? do something more like
+    // the lexer where the current token and the parser are in the scope.
+
+    function expect(token, tokenType) {
+        if (token.type !== tokenType) {
+            throw new Error('token.type was not ' + tokenType + ' for ' + JSON.stringify(token));
+        }
+
         return true;
     }
 
-    // ASSUMPTION(jwwishart) /* are eaten and next c is first char of ...
-    // the multiline comment contents
-    function eat_multiline_comments() {
-        do {
-            if (c === '/' && move_next() && c === '*') {
-                multilineCommentDepth++;
-                continue;
-            }
-
-            if (c === '*' && move_next() && c === '/') {
-                multilineCommentDepth--
-                continue;
-            }
-
-            // We have hit the end of the outermost multiline comment
-            if (multilineCommentDepth === -1) {
-                multilineCommentDepth = 0; // Reset for next time!
-                break;
-            }
-        }  while(move_next());
-    }
-
-    return {
-        peek: function() {
-            var colNo = 1;
-
-            if (token !== null) {
-                return token;
-            }
-
-            token = create_token(TOKEN_TYPE_UNKNOWN, '');
-
-            while ((c = peek()) !== null) {
-                // Get Mappable Char to Tokens
-                var to_return = try_map_char_to_token(c);
-                if (to_return !== null) {
-                    // TODO(jwwishart) for now just handle this manually
-                    if (c === ' ' || c === '\t' || c === '\n') {
-                        continue;
-                    }
-
-                    return to_return;
-                }
-
-                // Single line Comments
-                if (c === '/') {
-                    eat();
-
-                    // TODO(jwwishart) double line comments 
-                    // TODO(jwwishart) NESTED double line comments!!!
-
-                    // Multi-line comments
-                    if (peek() === '*') {
-                        eat(); // eat and setup c correctly | eat_multiline_comments assumes /* is gone!
-                        c = peek();
-                        eat_multiline_comments();
-
-                        continue;
-                    }
-
-                    // Single-line comments
-                    if (peek() === '/') {
-                        // Eat till newline
-                        eat_while_not('\n');
-                        
-                        continue;
-                    }
-                }
-
-                // String Literals
-                if (c === '"') {
-                    token = create_token(TOKEN_TYPE_STRING_LITERAL, '');
-                    token.text = get_string_literal();
-
-                    return token;
-                }
-
-                // Number Literals
-                // TODO(jwwishart) ints only, support floats etc.
-                if (c >= '0' && c <= '9') {
-                    token = create_token(TOKEN_TYPE_NUMBER_LITERAL, '');
-                    token.text = get_number_literal();
-
-                    return token;
-                }
-
-                if (c === ':') {
-                    colNo = scanner.get_position_info().colNo;
-
-                    eat();
-
-                    if (peek() === ':') {
-                        token = create_token(TOKEN_TYPE_DOUBLE_COLON, c);
-
-                        eat();
-                    } else if (peek() === '=') {
-                        token = create_token(TOKEN_TYPE_COLON_EQUALS, c);
-
-                        eat();
-                    } else {
-                        // TODO(jwwishart) Get the type identifier
-                        // TODO(jwwishart) Verify the type is in scope! (in the parser!)
-                        token = create_token(TOKEN_TYPE_SINGLE_COLON, c);
-                    }
-
-                    token.colNo = colNo;
-
-                    return token;
-                }
-
-                if (/[a-zA-Z]/gi.test(c)) {
-                    token = create_token(TOKEN_TYPE_IDENTIFIER, '');
-                    token.text = get_identifier();
-                    return token;
-                }
-
-                var errorCharInfo = scanner.get_position_info();
-
-                console.error("ERROR: Unexpected character '" + c + "' (ln: " + errorCharInfo.lineNo + ", col: " + errorCharInfo.colNo +")");
-                return null; // we have missed something?
-            }
-
-            return null;
-        },
-
-        eat: function() {
-            token = null;
+    function accept(token, tokenType) {
+        if (token === null) {
+            return false;
         }
-    };
-}
 
+        if (token.type === tokenType) {
+            return true;
+        }
 
-// @Parser --------------------------------------------------------------------
-//
-
-
-// TODO(jwwishart) accept and expect ought just take the type and read from the
-// token stream
-
-// TODO(jwwishart) Why do we need to pass the parser around? do something more like
-// the lexer where the current token and the parser are in the scope.
-
-function expect(token, tokenType) {
-    if (token.type !== tokenType) {
-        throw new Error('token.type was not ' + tokenType + ' for ' + JSON.stringify(token));
-    }
-
-    return true;
-}
-
-function accept(token, tokenType) {
-    if (token == null) {
         return false;
     }
 
-    if (token.type === tokenType) {
-        return true;
-    }
+    function find_function_in_scope(scope, functionName) {
+        // TODO(jwwishart) how to deal with builtin functions? declare them
+        // on the scope somehow?
 
-    return false;
-}
-
-function find_function_in_scope(scope, functionName) {
-    // TODO(jwwishart) how to deal with builtin functions? declare them
-    // on the scope somehow?
-
-    if (functionName == 'print') {
-        return {
-            identifier: 'print',
-            isBuiltIn: true,
-            parameters: [{
-                name: 'message',
-                dataType: 'any'
-            }]
-        };
-    }
-
-    while (scope !== null) {
-        // Search Statements?
-        // TODO(jwwishart) Should have symbol table?
-        if (scope.statements && scope.statements.length > 0) {
-            for (var i = 0; i < scope.statements.length; i++) {
-                if (scope.statements[i].type === AST_NODE_TYPE_FUNCTION_DECLARATION
-                    && scope.statements[i].identifier === functionName) 
-                {
-                    return scope.statements[i];
-                }
-            }
+        if (functionName == 'print') {
+            return {
+                identifier: 'print',
+                isBuiltIn: true,
+                parameters: [{
+                    name: 'message',
+                    dataType: 'any'
+                }]
+            };
         }
 
-        scope = scope.parent;
-    }
-
-    return null;
-}
-
-function find_variable_in_scope(scope, varName) {
-    while (scope !== null) {
-        // Search Statements?
-        // TODO(jwwishart) Should have symbol table?
-        if (scope.statements && scope.statements.length > 0) {
-            for (var i = 0; i < scope.statements.length; i++) {
-                if (scope.statements[i].type === AST_NODE_TYPE_VARIABLE_DECLARATION
-                    && scope.statements[i].text === varName)
-                {
-                    return scope.statements[i];
+        while (scope !== null) {
+            // Search Statements?
+            // TODO(jwwishart) Should have symbol table?
+            if (scope.statements && scope.statements.length > 0) {
+                for (var i = 0; i < scope.statements.length; i++) {
+                    if (scope.statements[i].type === AST_NODE_TYPE_FUNCTION_DECLARATION &&
+                        scope.statements[i].identifier === functionName)
+                    {
+                        return scope.statements[i];
+                    }
                 }
             }
+
+            scope = scope.parent;
         }
 
-        scope = scope.parent;
+        return null;
     }
 
-    return null;
-}
+    function find_variable_in_scope(scope, varName) {
+        while (scope !== null) {
+            // Search Statements?
+            // TODO(jwwishart) Should have symbol table?
+            if (scope.statements && scope.statements.length > 0) {
+                for (var i = 0; i < scope.statements.length; i++) {
+                    if (scope.statements[i].type === AST_NODE_TYPE_VARIABLE_DECLARATION &&
+                        scope.statements[i].text === varName)
+                    {
+                        return scope.statements[i];
+                    }
+                }
+            }
+
+            scope = scope.parent;
+        }
+
+        return null;
+    }
 
 
     // Token Parser
@@ -871,197 +879,342 @@ function find_variable_in_scope(scope, varName) {
     }
 
 
-// @AST Generation ------------------------------------------------------------
-//
+    // @AST Generation ------------------------------------------------------------
+    //
 
-generate_global_constants('AST_NODE_TYPES', [
-    'AST_NODE_TYPE_UNKNOWN',
+    generate_global_constants('AST_NODE_TYPES', [
+        'AST_NODE_TYPE_UNKNOWN',
 
-    'AST_NODE_TYPE_PARAMETER',
-    'AST_NODE_TYPE_LITERAL',
-    'AST_NODE_TYPE_OPERATOR',
-    'AST_NODE_TYPE_IDENTIFIER',
+        'AST_NODE_TYPE_PARAMETER',
+        'AST_NODE_TYPE_LITERAL',
+        'AST_NODE_TYPE_OPERATOR',
+        'AST_NODE_TYPE_IDENTIFIER',
 
-    'AST_NODE_TYPE_EXPRESSION',
+        'AST_NODE_TYPE_EXPRESSION',
 
-    'AST_NODE_TYPE_FUNCTION_DECLARATION',
-    'AST_NODE_TYPE_FUNCTION_CALL',
+        'AST_NODE_TYPE_FUNCTION_DECLARATION',
+        'AST_NODE_TYPE_FUNCTION_CALL',
 
-    'AST_NODE_TYPE_PROGRAM',
-    'AST_NODE_TYPE_SCOPE',
-    'AST_NODE_TYPE_FUNCTION_SCOPE',
-    'AST_NODE_TYPE_STATEMENT',
-    'AST_NODE_TYPE_VARIABLE_DECLARATION'
-]);
+        'AST_NODE_TYPE_PROGRAM',
+        'AST_NODE_TYPE_SCOPE',
+        'AST_NODE_TYPE_FUNCTION_SCOPE',
+        'AST_NODE_TYPE_STATEMENT',
+        'AST_NODE_TYPE_VARIABLE_DECLARATION'
+    ]);
 
 
-function extend() {
-    var objects = Array.prototype.slice.call(arguments);
+    function extend() {
+        var objects = Array.prototype.slice.call(arguments);
 
-    // TODO(jwwishart) test that objects exist)
-    var first = objects[0];
-    for (var i = 1; i < objects.length; i++) {
-        var thisObj = objects[i];
+        // TODO(jwwishart) test that objects exist)
+        var first = objects[0];
+        for (var i = 1; i < objects.length; i++) {
+            var thisObj = objects[i];
 
-        for (var k in thisObj) {
-            first[k] = thisObj[k];
+            for (var k in thisObj) {
+                first[k] = thisObj[k];
+            }
         }
+
+        return first;
     }
 
-    return first;
-}
 
+    // AST Generation Functions
+    //
 
-// AST Generation Functions
-//
-
-function ast_create_node(type, addFields) {
-    var result = addFields || {};
-    result.type = type || AST_NODE_TYPE_UNKNOWN;
-    result.typeName = get_global_constant_name('AST_NODE_TYPES', type);
-    
-    return result;
-}
-
-
-
-function ast_create_scope(parentScope, type) {
-    if (parentScope === undefined) {
-        throw new Error("ast_create_scope was not given a parentScope");
+    function ast_create_node(type, addFields) {
+        var result = addFields || {};
+        result.type = type || AST_NODE_TYPE_UNKNOWN;
+        result.typeName = get_global_constant_name('AST_NODE_TYPES', type);
+        
+        return result;
     }
 
-    return ast_create_node(type || AST_NODE_TYPE_SCOPE, {
-        parameters: [],
-        statements: [],
 
-        parent: parentScope,
-        scopeDepth: ast_count_scope_depth(parentScope) + 1
-    });
-}
 
-function ast_create_statement(definition) {
-    var defaults = {
-        lhs: null,
-        rhs: null
-    };
+    function ast_create_scope(parentScope, type) {
+        if (parentScope === undefined) {
+            throw new Error("ast_create_scope was not given a parentScope");
+        }
 
-    var def = extend({}, defaults, definition);
+        return ast_create_node(type || AST_NODE_TYPE_SCOPE, {
+            parameters: [],
+            statements: [],
 
-    return ast_create_node(AST_NODE_TYPE_STATEMENT, def);
-}
-
-// Same as a Statement!
-function ast_create_variable_declaration(definition) {
-    var defaults = {
-        identifier: null,
-
-        type: AST_NODE_TYPE_VARIABLE_DECLARATION,
-
-        dataType: null, // TODO(jwwishart) Cant' assume any... we WANT to have a type!!!
-        isInitialized: false
-    };
-
-    var def = extend({}, defaults, definition);
-
-    return ast_create_node(def.type, def);
-}
-
-function ast_create_variable_expression() {} // identifier etc? Why is it an expression though?
-function ast_create_boolean_expression() {}
-function ast_create_or_expression() {} // lhs OR rhs
-function ast_create_and_expression() {} // lhs AND rhs
-function ast_create_not_expression() {} // expression (you then ! it... boolean required?
-
-function ast_create_expression(definition) {
-    var defaults = {
-        parts: []
-    };
-
-    var def = extend({}, defaults, definition);
-
-    return ast_create_node(AST_NODE_TYPE_EXPRESSION, def);
-}
-
-function ast_create_parameter(definition) {
-    var defaults = {
-        name: null,
-        dataType: 'any', // TODO(jwwishart) do we want this as any by default???
-        isInitialized: false
-    };
-
-    var def = extend({}, defaults, definition);
-
-    return ast_create_node(AST_NODE_TYPE_PARAMETER, def);
-}
-
-function ast_create_literal(dataType, value) {
-    var definition = {
-        dataType: dataType || 'any',
-        isInitialized: value !== undefined,
-        value: value
-    };
-
-    return ast_create_node(AST_NODE_TYPE_LITERAL, definition);
-}
-
-function ast_create_operator(operator) {
-    return ast_create_node(AST_NODE_TYPE_OPERATOR, {
-        operator: operator
-    });
-}
-
-function ast_create_function_declaration(definition) {
-    var defaults = {
-        identifier: '',
-        parameters: [], // name, type
-        body: null, // a scope!
-        isBuiltIn: false
-    };
-
-    var def = extend({}, defaults, definition);
-
-    return ast_create_node(AST_NODE_TYPE_FUNCTION_DECLARATION, def);
-}
-
-function ast_create_function_call(definition) {
-    var defaults = {
-        identifier: '',
-        builtin: false,
-        found: false,
-        expression: null // list of expressions!
-    };
-
-    var def = extend({}, defaults, definition);
-
-    return ast_create_node(AST_NODE_TYPE_FUNCTION_CALL, def);
-}
-
-function ast_create_identifier(identifier) {
-    return ast_create_node(AST_NODE_TYPE_IDENTIFIER, {
-        identifier: identifier
-    });
-}
-
-// Helpers
-//
-
-function ast_count_scope_depth(scope) {
-    var count = 0;
-    var currentScope = scope;
-
-    while (currentScope && currentScope.parent !== null) {
-        currentScope = currentScope.parent;
-        count++;
+            parent: parentScope,
+            scopeDepth: ast_count_scope_depth(parentScope) + 1
+        });
     }
 
-    return count;
-}
+    function ast_create_statement(definition) {
+        var defaults = {
+            lhs: null,
+            rhs: null
+        };
+
+        var def = extend({}, defaults, definition);
+
+        return ast_create_node(def.type, def);
+    }
+
+    // Same as a Statement!
+    function ast_create_variable_declaration(definition) {
+        var defaults = {
+            identifier: null,
+
+            type: AST_NODE_TYPE_VARIABLE_DECLARATION,
+
+            dataType: null, // TODO(jwwishart) Cant' assume any... we WANT to have a type!!!
+            isInitialized: false
+        };
+
+        var def = extend({}, defaults, definition);
+
+        return ast_create_node(def.type, def);
+    }
+
+    function ast_create_variable_expression() {} // identifier etc? Why is it an expression though?
+    function ast_create_boolean_expression() {}
+    function ast_create_or_expression() {} // lhs OR rhs
+    function ast_create_and_expression() {} // lhs AND rhs
+    function ast_create_not_expression() {} // expression (you then ! it... boolean required?
+
+    function ast_create_expression(definition) {
+        var defaults = {
+            parts: []
+        };
+
+        var def = extend({}, defaults, definition);
+
+        return ast_create_node(AST_NODE_TYPE_EXPRESSION, def);
+    }
+
+    function ast_create_parameter(definition) {
+        var defaults = {
+            name: null,
+            dataType: 'any', // TODO(jwwishart) do we want this as any by default???
+            isInitialized: false
+        };
+
+        var def = extend({}, defaults, definition);
+
+        return ast_create_node(AST_NODE_TYPE_PARAMETER, def);
+    }
+
+    function ast_create_literal(dataType, value) {
+        var definition = {
+            dataType: dataType || 'any',
+            isInitialized: value !== undefined,
+            value: value
+        };
+
+        return ast_create_node(AST_NODE_TYPE_LITERAL, definition);
+    }
+
+    function ast_create_operator(operator) {
+        return ast_create_node(AST_NODE_TYPE_OPERATOR, {
+            operator: operator
+        });
+    }
+
+    function ast_create_function_declaration(definition) {
+        var defaults = {
+            identifier: '',
+            parameters: [], // name, type
+            body: null, // a scope!
+            isBuiltIn: false
+        };
+
+        var def = extend({}, defaults, definition);
+
+        return ast_create_node(AST_NODE_TYPE_FUNCTION_DECLARATION, def);
+    }
+
+    function ast_create_function_call(definition) {
+        var defaults = {
+            identifier: '',
+            builtin: false,
+            found: false,
+            expression: null // list of expressions!
+        };
+
+        var def = extend({}, defaults, definition);
+
+        return ast_create_node(AST_NODE_TYPE_FUNCTION_CALL, def);
+    }
+
+    function ast_create_identifier(identifier) {
+        return ast_create_node(AST_NODE_TYPE_IDENTIFIER, {
+            identifier: identifier
+        });
+    }
+
+    // Helpers
+    //
+
+    function ast_count_scope_depth(scope) {
+        var count = 0;
+        var currentScope = scope;
+
+        while (currentScope && currentScope.parent !== null) {
+            currentScope = currentScope.parent;
+            count++;
+        }
+
+        return count;
+    }
 
 
 
+    // @JavaScript Target -----------------------------------------------------
+    //
 
-// @Compiler ------------------------------------------------------------------
-//
+
+    function generate_js(ast) {
+        var result = process_ast_node(ast, ast /* Program */);
+
+        return result.join('\n');
+    }
+
+    function process_ast_node(ast, scope) {
+        var result = [];
+
+        // TODO(jwwishart) format it nicer for the poor user!
+
+        var prefix = '  ';
+        var tmpScope = scope;
+        while(tmpScope.parent !== null) {
+            prefix += '  ';
+            tmpScope = tmpScope.parent;
+        }
+
+        if (ast.type === AST_NODE_TYPE_PROGRAM) {
+            result.push(';(function(global){');
+
+            for (var psi in ast.statements) {
+                result = result.concat(process_ast_node(ast.statements[psi], scope));
+            }
+
+            result.push('}(this));'); // TODO(jwwishart) node etc?
+        }
+
+        if (ast.type === AST_NODE_TYPE_SCOPE) {
+            result.push(prefix + '(function(){');
+
+            for (var si in ast.statements) {
+                result.push(process_ast_node(ast.statements[si], scope).join('\n'));
+            }
+
+            result.push(prefix + '}();'); // TODO(jwwishart) node etc?
+        }
+
+        if (ast.type === AST_NODE_TYPE_FUNCTION_SCOPE) {
+            for (var si in ast.statements) {
+                result = result.concat(process_ast_node(ast.statements[si], scope));
+            }
+        }
+
+        if (ast.type === AST_NODE_TYPE_VARIABLE_DECLARATION) {
+            if (ast.isInitialized === false) {
+                result.push(prefix + 'var ' + ast.lhs.identifier + ' = null;');
+            } else {
+                // TODO(jwwishart) process_ast_node(ast.rhs, scope)!!! :oS
+                result.push(prefix + 'var ' + ast.lhs.identifier + ' = ' + process_ast_node(ast.rhs, scope) + ';');
+            }
+        }
+
+        if (ast.type === AST_NODE_TYPE_EXPRESSION) {
+            return (function() {
+                // TODO(jwwishart) how would we verify that it is a VALID expression?
+                // ... probably just the same as this method but purely in an expect/accept manner?
+                var parts = [];
+
+                for (var part in ast.parts) {
+                    parts.push(process_ast_node(ast.parts[part], scope));
+                }
+
+                return parts.join(' ');
+            }());
+        }
+
+        if (ast.type === AST_NODE_TYPE_LITERAL) {
+            if (ast.dataType === 'string') {
+                return '"' + ast.value + '"';
+            }
+
+            if (ast.dataType === 'int') {
+                return ast.value;
+            }
+
+            if (ast.dataType === 'bool') {
+                return ast.value;
+            }
+
+            throw new Error('ast dataType unknown: ' + ast.dataType);
+        }
+
+        if (ast.type === AST_NODE_TYPE_OPERATOR) {
+            return ast.operator;
+        }
+
+        if (ast.type === AST_NODE_TYPE_IDENTIFIER) {
+            return ast.identifier;
+        }
+        
+        if (ast.type === AST_NODE_TYPE_FUNCTION_DECLARATION) {
+            var params = '';
+            for (var p = 0; p < ast.parameters.length; p++) {
+                params += ast.parameters[p].name + ', ';
+            }
+
+            params = params.substring(0, params.length - 2);
+            result.push(prefix + 'function ' + ast.identifier + '(' + params + ') {');
+
+            result.push(process_ast_node(ast.body, ast.body).join('\n'));
+
+            result.push(prefix + '}');
+        }
+
+        if (ast.type === AST_NODE_TYPE_FUNCTION_CALL) {
+            (function() {
+                var funcName = ast.identifier;
+                var parts = '';
+
+                // Builting Functions
+                //
+                
+                if (ast.builtin === true) {
+                    if (ast.identifier === 'print') {
+                        funcName ='console.log';
+                    } else {
+                        throw new Error("Unexpected Error: Hit unknown builting function" + ast.identifier);
+                    }
+                }
+
+                parts += funcName + '(';
+
+                // Argument Expressions?
+                if (ast.rhs) {
+                    // TODO(jwwishart) @BUG expression parts might have , for arguments passed to function :oS
+                    for (var i= 0; i < ast.rhs.parts.length; i++) {
+                        parts += process_ast_node(ast.rhs, scope);
+                    }
+                }
+
+                parts += ');';
+
+                result.push(prefix + parts);
+            }());
+        }
+
+        return result;
+    }
+
+
+
+    // @Compiler ------------------------------------------------------------------
+    //
 
     erg.compile = function compile(code, debug) {
         if (debug) {
@@ -1099,3 +1252,5 @@ function ast_count_scope_depth(scope) {
 
         return generate_js(ast);
     };
+
+}(this));

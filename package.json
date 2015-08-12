@@ -5,7 +5,8 @@
   "author": "jwwishart",
   "license": "ISC",
   "bin": {
-    "ergjs": "bin/ergjs"
+    "ergjs": "bin/ergjs",
+    "ergjs-debug": "bin/ergjs-debug"
   },
   "engines": {
     "node": ">= 0.8.0"

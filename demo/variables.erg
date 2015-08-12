@@ -1,0 +1,21 @@
+/*
+    Variables
+*/
+
+// TODO(jwwishart) declarations with types
+str : string;
+num : int;
+isInitialized : bool;
+
+// Declarations - Initialized by literals
+// TODO(jwwishart) these need type inference
+message := "Hello World";
+age := 35;
+isSuccess := true;
+
+print(message);
+print(age);
+print(isSuccess);
+
+
+// Assignments of new Valus

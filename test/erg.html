@@ -2,7 +2,6 @@
     <head>
         <title></title>
         <script src="../src/erg.js"></script>
-        <script src="../src/erg.target.javascript.js"></script>
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.js"></script>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/default.min.css">
@@ -144,7 +143,7 @@ my_print(12);
             function exec() {
                 var code = document.getElementById('code').value;
                 var output = document.getElementById('output');
-                output.textContent = erg.compile(code, true);;
+                output.textContent = erg.compile(code, true);
 
                 console.log("OUTPUT START -------");
                 eval(output.textContent);
