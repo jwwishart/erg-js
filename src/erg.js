@@ -8,6 +8,10 @@ var erg;
     erg = __global.erg || {};
     __global.erg = erg;
 
+
+    // NodeJS-ification
+    //
+
     if (typeof module === 'object' && typeof module.exports === 'object') {
         __global = GLOBAL;
 
@@ -118,7 +122,10 @@ var erg;
         'TOKEN_TYPE_KEYWORD_RETURN',
 
         // Symbols
-        'TOKEN_TYPE_PLUS'
+        'TOKEN_TYPE_PLUS',
+
+        'TOKEN_TYPE_ASSIGNMENT',
+        'TOKEN_TYPE_UNINITIALIZE_OPERATOR'
     ]);
 
     erg.createTokenizer = function(scanner) {
@@ -138,6 +145,7 @@ var erg;
             ','  : TOKEN_TYPE_COMMA,
             
             '+'  : TOKEN_TYPE_PLUS
+            // '='  : TOKEN_TYPE_ASSIGNMENT must handle custom because of := and == etc.
         };
 
         var token = null;
@@ -304,7 +312,7 @@ var erg;
                     var to_return = try_map_char_to_token(c);
                     if (to_return !== null) {
                         // TODO(jwwishart) for now just handle this manually
-                        if (c === ' ' || c === '\t' || c === '\n') {
+                       if (c === ' ' || c === '\t') {
                             continue;
                         }
 
@@ -377,6 +385,27 @@ var erg;
                         return token;
                     }
 
+                    if (c === '=') {
+                        token = create_token(TOKEN_TYPE_ASSIGNMENT, '=');
+                        eat();
+                        return token;
+                    }
+
+                    if (c === '-') {
+                        eat();
+                        if (peek() === '-') {
+                            // TODO(jwwishart) decrement operator
+                            eat();
+
+                            if (peek() === '-') {
+                                token = create_token(TOKEN_TYPE_UNINITIALIZE_OPERATOR, '---');
+                                eat();
+                                return token;
+                            }
+                        }
+                        // TODO(jwwishart) minus
+                    }
+
                     if (/[a-zA-Z]/gi.test(c)) {
                         token = create_token(TOKEN_TYPE_IDENTIFIER, '');
                         token.text = get_identifier();
@@ -410,8 +439,12 @@ var erg;
     // the lexer where the current token and the parser are in the scope.
 
     function expect(token, tokenType) {
+        if (token == null) {
+            throw new Error('Unexpected end of file; was expecting ' + tokenType + ' (' + get_global_constant_name('TOKEN_TYPES', tokenType) + ') ');
+        }
+
         if (token.type !== tokenType) {
-            throw new Error('token.type was not ' + tokenType + ' for ' + JSON.stringify(token));
+            throw new Error('Unexpected Token ' + token.type + ' (' + get_global_constant_name('TOKEN_TYPES', tokenType) + ') was expecting ' + tokenType + ' (' + get_global_constant_name('TOKEN_TYPES', tokenType) + ') Token Info: ' + JSON.stringify(token));
         }
 
         return true;
@@ -439,7 +472,7 @@ var erg;
                 isBuiltIn: true,
                 parameters: [{
                     name: 'message',
-                    dataType: 'any'
+                    data_type: 'any'
                 }]
             };
         }
@@ -464,13 +497,13 @@ var erg;
     }
 
     function find_variable_in_scope(scope, varName) {
-        while (scope !== null) {
+        while (scope !== null) { // SHOULD NEVER BE UNDEFINED... IF IT IS scope is not a scope but likely a variable name or somethng else by accident!
             // Search Statements?
             // TODO(jwwishart) Should have symbol table?
             if (scope.statements && scope.statements.length > 0) {
                 for (var i = 0; i < scope.statements.length; i++) {
                     if (scope.statements[i].type === AST_NODE_TYPE_VARIABLE_DECLARATION &&
-                        scope.statements[i].text === varName)
+                        scope.statements[i].lhs.identifier === varName)
                     {
                         return scope.statements[i];
                     }
@@ -524,7 +557,7 @@ var erg;
 
         programScope.parameters.push(ast_create_parameter({
             name:           'global',
-            dataType:       'any',
+            data_type:       'any',
             isInitialized:  true
         }));
 
@@ -602,7 +635,7 @@ var erg;
 
                 funcDef.parameters.push(ast_create_parameter({
                     name: identifier,
-                    dataType: type || 'any'
+                    data_type: type || 'any'
                 }));
 
                 continue;
@@ -617,6 +650,10 @@ var erg;
     function parse_function_arguments(currentScope, parser, funcCall, funcDecl) {
         // TODO(jwwishart) this might be a bit naive.
         function count_args(expressionParts) {
+            if (expressionParts == null) {
+                return 1; // likely just literal etc
+            }
+
             var count = 0;
             for (var i = 0; i < expressionParts.length; i++) {
                 if (expressionParts[i].type === AST_NODE_TYPE_OPERATOR) {
@@ -646,11 +683,11 @@ var erg;
         }
 
         for (var i = 0; i < funcDecl.parameters.length; i++) {
-            if (funcDecl.parameters[i].dataType !== 'any') {
+            if (funcDecl.parameters[i].data_type !== 'any') {
                 // Literal Expressions (single one)
                 if (funcCall.rhs && funcCall.rhs.parts) {
-                    if (funcCall.rhs.parts[i].dataType !== funcDecl.parameters[i].dataType) {
-                        throw new Error("Function call " + funcDecl.identifier + " expects argument " + i + " to be of type " + funcDecl.parameters[i].dataType + " but was provided a literal of type " + funcCall.expression.parts[i].dataType);
+                    if (funcCall.rhs.parts[i].data_type !== funcDecl.parameters[i].data_type) {
+                        throw new Error("Function call " + funcDecl.identifier + " expects argument " + i + " to be of type " + funcDecl.parameters[i].data_type + " but was provided a literal of type " + funcCall.expression.parts[i].data_type);
                     }
                 }
 
@@ -707,15 +744,38 @@ var erg;
             (function() {
                 var identifierToken = parser.peek();
                 var identifier = identifierToken.text;
+                var data_type_identifier;
+
+                // TODO(jwwishart) should check for identifier duplicate here first!!!
 
                 parser.eat(); // eat identifier!
 
                 // Variable Declarations
                 //
 
+                if (accept(parser.peek(), TOKEN_TYPE_SINGLE_COLON)) {
+                    parser.eat(); // eat :
+
+                    if (expect(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
+                        data_type_identifier  = parser.peek().text;
+                        parser.eat(); // eat data-type identifier
+                    }
+
+                    if (find_variable_in_scope(currentScope, identifier) != null) {
+                        throw new Error("Duplicate Variable Declaration: " + JSON.stringify(identifierToken));
+                    }
+
+                    parse_variable_declaration(currentScope, parser, identifier, data_type_identifier);
+                }
+
                 if (accept(parser.peek(), TOKEN_TYPE_COLON_EQUALS)) {
                     parser.eat(); // eat :=
-                    parse_variable_declaration(currentScope, parser, identifier);
+
+                    if (find_variable_in_scope(currentScope, identifier) != null) {
+                        throw new Error("Duplicate Variable Declaration: " + JSON.stringify(identifierToken));
+                    }
+
+                    parse_variable_declaration(currentScope, parser, identifier, null, true /* assignment expected*/);
                 }
 
 
@@ -749,21 +809,20 @@ var erg;
     function parse_expression(currentScope, parser, statement) {
         var initialized = false;
         var endToken = TOKEN_TYPE_SEMICOLON;
-        var acceptComma = false;
+        var accept_commas = false;
 
         if (statement.type === AST_NODE_TYPE_FUNCTION_CALL ||
             statement.type === AST_NODE_TYPE_FUNCTION_DECLARATION)
         {
             endToken = TOKEN_TYPE_PAREN_CLOSE;
-            acceptComma = true;
+            accept_commas = true;
         }
 
         while (parser.peek() !== null && parser.peek().type !== endToken) {
             // NULL
             // 
             if (accept(parser.peek(), TOKEN_TYPE_NULL)) {
-                statement.rhs = statement.rhs || ast_create_expression();
-                statement.rhs.parts.push(ast_create_literal('null', 'null'));
+                statement.rhs = ast_create_literal('null', 'null');
 
                 initialized = true;
                 parser.eat();
@@ -773,10 +832,15 @@ var erg;
             // Boolean Literal
             if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
                 if (parser.peek().text === "true" || parser.peek().text === "false"){
-                    statement.rhs = statement.rhs || ast_create_expression();
-                    statement.rhs.parts.push(ast_create_literal('bool', parser.peek().text));
+                    if (accept_commas) {
+                        statement.rhs = statement.rhs || ast_create_expression();
+                        statement.rhs.parts.push(ast_create_literal('bool', parser.peek().text));
+                    } else {
+                        statement.rhs = ast_create_literal('bool', parser.peek().text);
+                    }
+
                     // Special as bool value is identifier not parsed like strings and numbers
-                    statement.dataType = 'bool';
+                    statement.data_type = 'bool';
 
                     initialized = true;
                     parser.eat();
@@ -786,8 +850,7 @@ var erg;
 
             // Identifier
             if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
-                statement.rhs = statement.rhs || ast_create_expression();
-                statement.rhs.parts.push(ast_create_identifier(parser.peek().text));
+                statement.rhs = ast_create_identifier(parser.peek().text);
 
                 initialized = true;
                 parser.eat();
@@ -809,8 +872,12 @@ var erg;
             // Literals
             //
             if (accept(parser.peek(), TOKEN_TYPE_STRING_LITERAL)) {
-                statement.rhs = statement.rhs || ast_create_expression();
-                statement.rhs.parts.push(ast_create_literal('string', parser.peek().text));
+                if (accept_commas) {
+                    statement.rhs = statement.rhs || ast_create_expression();
+                    statement.rhs.parts.push(ast_create_literal('string', parser.peek().text));
+                } else {
+                    statement.rhs = ast_create_literal('string', parser.peek().text);
+                }
 
                 initialized = true;
                 parser.eat();
@@ -818,20 +885,19 @@ var erg;
             }
 
             if (accept(parser.peek(), TOKEN_TYPE_NUMBER_LITERAL)) {
-                statement.rhs = statement.rhs || ast_create_expression();
-                statement.rhs.parts.push(ast_create_literal('int', parser.peek().text));
+                if (accept_commas) {
+                    statement.rhs = statement.rhs || ast_create_expression();
+                    statement.rhs.parts.push(ast_create_literal('int', parser.peek().text));
+                } else {
+                    statement.rhs = ast_create_literal('int', parser.peek().text);
+                }
 
                 initialized = true;
                 parser.eat();
                 continue;
             }
 
-            if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
-
-                continue;
-            }
-
-            if (acceptComma) {
+            if (accept_commas) {
                 // TODO(jwwishart) this is ONLY for function calls? how to enforce in correct scope?
                 if (accept(parser.peek(), TOKEN_TYPE_COMMA)) {
                     statement.rhs = statement.rhs || ast_create_expression();
@@ -851,31 +917,97 @@ var erg;
         return initialized; // NO EXPRESSION FOUND!
     }
 
-    function parse_variable_declaration(currentScope, parser, identifier) {
-        var variableDefinition = {
-            identifier: identifier,
-            dataType: 'any',
-            isInitialized: false
+    function parse_variable_declaration(currentScope, parser, identifier, data_type_identifier, assignment_expected) {
+        var decl = {
+            identifier:         identifier,
+            data_type:          data_type_identifier || 'any',
+
+            is_initialized:     false,
+            is_explicitly_uninitialized: false,
+            is_type_determined: !!data_type_identifier, // whether infered or explicity
+            is_type_available:  false  // type has been verified!
         };
 
         var statement = {
             type: AST_NODE_TYPE_VARIABLE_DECLARATION,
 
-            lhs: variableDefinition,
+            lhs: decl,
             rhs: null
         };
 
-        var def = ast_create_variable_declaration(variableDefinition);
-        var statement_definition = ast_create_statement(statement);
+        statement = ast_create_statement(statement);
+        decl = statement.lhs = ast_create_variable_declaration(decl);
 
-        parse_expression(currentScope, parser, statement_definition);
+
+        // Parse End or Assignment
+        //
+
+        // assignment_expected means we had a := which REQUIRES us to
+        // assign a value... we ought NOT see the semicolon!
+        if (!assignment_expected && accept(parser.peek(), TOKEN_TYPE_SEMICOLON)) {
+            parser.eat(); // eat ;
+        } else {
+            // Likewise if := was prior we ought not see this!!!
+            if (!assignment_expected && accept(parser.peek(), TOKEN_TYPE_ASSIGNMENT)) {
+                // Assignment
+                parser.eat(); // eat =
+
+                if (accept(parser.peek(), TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
+                    decl.is_explicitly_uninitialized = true;
+                    parser.eat();
+                } else {
+                    decl.is_initialized = parse_expression(currentScope, parser, statement);
+
+                    if (!decl.is_initialized) {
+                       throw new Error("Expected literal or expression for assignment: " + JSON.stringify(parser.peek()));
+                    }
+                }
+            } else {
+                // Literal Expected???
+                decl.is_initialized = parse_expression(currentScope, parser, statement);
+
+                // TODO(jwwishart) what about identifier? ...
+                // parse_expression should handle that?
+
+                if (!decl.is_initialized) {
+                   throw new Error("Expected literal or expression for assignment: " + JSON.stringify(parser.peek()));
+                }
+            }
+
+            if (expect(parser.peek(), TOKEN_TYPE_SEMICOLON)) {
+                parser.eat(); // eat ;
+            }
+        }
+
+        if (decl.is_type_determined && !decl.is_initialized && !decl.is_explicitly_uninitialized) {
+            // Built-int Types
+            //
+
+            statement.rhs = ast_create_expression();
+
+            if (decl.data_type === 'string') {
+                statement.rhs = ast_create_literal('string', '');
+            } else if (decl.data_type === 'int') {
+                statement.rhs = ast_create_literal('int', '0');
+            } else if (decl.data_type === 'bool') {
+                statement.rhs = ast_create_literal('bool', 'false');
+            } else {
+                statement.rhs = ast_create_literal("null", "null");
+            }
+
+            decl.is_type_available = true;
+            decl.is_initialized = true;
+
+            // Custom Types
+            // TODO(jwwishart) go find identifier, determine type :oS
+        }
 
         // TODO(jwwishart) is null for identifier correct?
         // TODO(jwwishart) if uninitialized and null given we don't know the type 
         // ... so fail!
         // TODO(jwwishart) should validate that the expression makes sense here! :o(
 
-        currentScope.statements.push(statement_definition);
+        currentScope.statements.push(statement);
     }
 
 
@@ -961,12 +1093,15 @@ var erg;
     // Same as a Statement!
     function ast_create_variable_declaration(definition) {
         var defaults = {
-            identifier: null,
+            type:               AST_NODE_TYPE_VARIABLE_DECLARATION,
 
-            type: AST_NODE_TYPE_VARIABLE_DECLARATION,
+            identifier:         null,
+            data_type:          null, // TODO(jwwishart) Cant' assume any... we WANT to have a type!!!
 
-            dataType: null, // TODO(jwwishart) Cant' assume any... we WANT to have a type!!!
-            isInitialized: false
+            // Flags
+            is_initialized:     false,
+            is_type_determined: false,
+            is_type_available:  false
         };
 
         var def = extend({}, defaults, definition);
@@ -993,7 +1128,7 @@ var erg;
     function ast_create_parameter(definition) {
         var defaults = {
             name: null,
-            dataType: 'any', // TODO(jwwishart) do we want this as any by default???
+            data_type: 'any', // TODO(jwwishart) do we want this as any by default???
             isInitialized: false
         };
 
@@ -1002,9 +1137,9 @@ var erg;
         return ast_create_node(AST_NODE_TYPE_PARAMETER, def);
     }
 
-    function ast_create_literal(dataType, value) {
+    function ast_create_literal(data_type, value) {
         var definition = {
-            dataType: dataType || 'any',
+            data_type: data_type || 'any',
             isInitialized: value !== undefined,
             value: value
         };
@@ -1116,7 +1251,9 @@ var erg;
         }
 
         if (ast.type === AST_NODE_TYPE_VARIABLE_DECLARATION) {
-            if (ast.isInitialized === false) {
+            if (ast.lhs.is_explicitly_uninitialized) {
+                result.push(prefix + 'var ' + ast.lhs.identifier + ';');
+            } else if (ast.lhs.is_initialized === false) {
                 result.push(prefix + 'var ' + ast.lhs.identifier + ' = null;');
             } else {
                 // TODO(jwwishart) process_ast_node(ast.rhs, scope)!!! :oS
@@ -1139,19 +1276,19 @@ var erg;
         }
 
         if (ast.type === AST_NODE_TYPE_LITERAL) {
-            if (ast.dataType === 'string') {
+            if (ast.data_type === 'string') {
                 return '"' + ast.value + '"';
             }
 
-            if (ast.dataType === 'int') {
+            if (ast.data_type === 'int') {
                 return ast.value;
             }
 
-            if (ast.dataType === 'bool') {
+            if (ast.data_type === 'bool') {
                 return ast.value;
             }
 
-            throw new Error('ast dataType unknown: ' + ast.dataType);
+            throw new Error('ast data_type unknown: ' + ast.data_type);
         }
 
         if (ast.type === AST_NODE_TYPE_OPERATOR) {
@@ -1180,6 +1317,7 @@ var erg;
             (function() {
                 var funcName = ast.identifier;
                 var parts = '';
+                var expPartList = [];
 
                 // Builting Functions
                 //
@@ -1196,9 +1334,15 @@ var erg;
 
                 // Argument Expressions?
                 if (ast.rhs) {
+                    if (ast.rhs.parts) {
+                        expPartList = ast.rhs.parts; 
+                    } else {
+                        expPartList.push(ast.rhs);
+                    }
+
                     // TODO(jwwishart) @BUG expression parts might have , for arguments passed to function :oS
-                    for (var i= 0; i < ast.rhs.parts.length; i++) {
-                        parts += process_ast_node(ast.rhs, scope);
+                    for (var i= 0; i < expPartList.length; i++) {
+                        parts += process_ast_node(expPartList[i], scope);
                     }
                 }
 

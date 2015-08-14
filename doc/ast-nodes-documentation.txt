@@ -1,0 +1,12 @@
+
+
+variable-declaration
+    type             : AST_NODE_TYPE_VARIABLE_DECLARATION
+    
+    identifier       : identifier
+    dataType         : identifier
+
+    // Flags
+    isInitialized    : bool = false
+    isTypeDetermined : bool = false
+

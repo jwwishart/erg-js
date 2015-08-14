@@ -1,0 +1,32 @@
+program-scope = file-scope*
+
+file-scope = statement*
+
+statement = 
+        block-scope
+    |   declaration
+    |   definition
+    , ";"
+
+block-scope = "{", statement, "}"
+
+declaration =
+        variable-declaration
+    |   function-declaration
+
+variable-declaration = 
+        identifier, ":=", identifier 
+    |   identifier, ":", identifier, ["=", (number | string | identifier | expression)]
+
+ast-node-type-constant =
+    AST_NODE_TYPE_*
+
+data-type =
+        built-in-data-type
+    |   custom-data-type
+
+
+identifer = ("_" | letter), {  "_" | letter }
+
+letter = "a" ... "z" | "A" ... "Z" | unicode_letter
+unicode_letter = any valid unicode code point essentially __bar newline__
