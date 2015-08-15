@@ -6,8 +6,27 @@
 type_string : string;
 type_int    : int;
 type_bool   : bool;
+type_any    : any;
 
-// @BUG Warn about use of uninitialized variable usage
+type_any2    : any = "This should be fine!";
+
+print(type_any); // PRints null as type_any is null
+// @BUG this doesn't work ... anything should be able to..
+// be assigned to an any variable!
+type_any = "Just happens to have a string now!";
+print(type_any); // SHould print the string
+type_any = true;
+print(type_any); // Should print the boolean value
+
+print(type_any2);
+
+// Note: type_string is initialized to default values!
+print(type_string);
+
+type_string = "now it has a non-default value";
+
+// @BUG this should error type missmatch
+
 print(type_string);
 
 type_string_initialized : string = "what";
@@ -18,9 +37,16 @@ type_int_null_initialized    : int    = null;
 type_bool_null_initialized   : bool   = null;
 
 // Declarations - explicitly not initialized
+// TODO(jwwishart) should uninitialized variables actually be set to null? not left as undefined? in JS compile target?
 type_string_not_initialized : string = ---;
 type_int_not_initialized    : int    = ---;
 type_bool_not_initialized   : bool   = ---;
+
+print(type_string_not_initialized); // @WARN this should show a warning
+
+print(type_int_not_initialized); // @WARN this should show a warning
+type_int_not_initialized = 1000; // If it wasn't initialized, it is now!
+print(type_int_not_initialized); // This should NOT warn as it is now initialized
 
 
 // Declarations - Initialized by literals
@@ -34,19 +60,21 @@ print(age);
 print(isSuccess);
 
 /*** TODOS ********************************************************************
-- Assignments of new values
-- Validate Types
 
+- Validate Types
+- assignment to 'any' type of a value of any type
 
 */
 
 
 /*** ERROR CASES **************************************************************
 
+me_no_exist = "now it has a non-default value"; // variable name doesn't exist... 
 message := "what?"; // should fail because variable exists
 message := "what?" // no semicolon!
 type_string_assignment_but_no_value  := ; // no value assigned!
 type_string_assignment_but_no_value2 : string = ; // no value assigned!
 you_cant_do_this := ---; // you should have a literal or expression as there is not type and we can't infer the type!
+type_string = false; // type_string is a string. You can't assign a boolean value
 
 */

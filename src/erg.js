@@ -1,4 +1,4 @@
-
+    
 var __global = this;
 var erg;
 
@@ -654,14 +654,17 @@ var erg;
                 return 1; // likely just literal etc
             }
 
-            var count = 0;
-            for (var i = 0; i < expressionParts.length; i++) {
-                if (expressionParts[i].type === AST_NODE_TYPE_OPERATOR) {
-                    continue;
-                }
+            var count = expressionParts.length > 0 ? 1 : 0;
 
-                count++;
+            for (var i = 0; i < expressionParts.length; i++) {
+                // We just separate on ',' all parts are expressions so should not
+                // be considered separate arguments!
+                if (expressionParts[i].type === AST_NODE_TYPE_OPERATOR &&
+                    expressionParts[i].operator === ',') {
+                    count++;
+                }
             }
+
             return count;
         }
 
@@ -747,6 +750,8 @@ var erg;
                 var data_type_identifier;
 
                 // TODO(jwwishart) should check for identifier duplicate here first!!!
+                // TODO(jwwishart) is existing_variable_decl actually the declaration?
+                var existing_variable_decl = find_variable_in_scope(currentScope, identifier);
 
                 parser.eat(); // eat identifier!
 
@@ -778,6 +783,43 @@ var erg;
                     parse_variable_declaration(currentScope, parser, identifier, null, true /* assignment expected*/);
                 }
 
+
+                // Assignment
+                // 
+
+                if (accept(parser.peek(), TOKEN_TYPE_ASSIGNMENT)) {
+                    parser.eat(); // eat =
+
+                    if (existing_variable_decl === null) {
+                        throw new Error("Assignment to variable '" + identifier + "'that doesn't exist: " + JSON.stringify(identifierToken));
+                    }
+
+                    var statement = {
+                        type: AST_NODE_TYPE_VARIABLE_ASSIGNMENT,
+
+                        lhs: existing_variable_decl.lhs, // TODO(jwwishart) is this a good idea? Or should I clone? might loose in-the-moment
+                        rhs: null
+                    };
+
+                    statement = ast_create_statement(statement);
+
+                    var initted = parse_expression(currentScope, parser, statement);
+
+                    if (initted === false) {
+                        throw new Error("Variable Assignment not assigned a valid valid: " + JSON.stringify(identifierToken));
+                    }
+
+                    // Type Missmatch?
+                    // TODO(jwwishart) move lhs and rhs checking
+                    // TODO(jwwishart) accept assignment of anything to if lhs type is 'any'
+                    if (statement.lhs.data_type !== 'any' && statement.lhs.data_type !== statement.rhs.data_type) {
+                        throw new Error("Assignment of value of type '" + statement.rhs.data_type + "' to variable of type '" + statement.lhs.data_type + "' is not allowed. " + JSON.stringify(statement) + " ::: " + JSON.stringify(identifierToken));
+                    }
+
+                    statement.lhs.is_initialized = true; // If it wasn't it is NOW!
+
+                    currentScope.statements.push(statement);
+                }
 
                 // Function Call
                 //
@@ -818,11 +860,30 @@ var erg;
             accept_commas = true;
         }
 
+        // TODO(jwwishart) ast_create_expression should always be assigned to rhs IF it is an expression only... never literals???????
+        function add_expression_part(statement, part) {
+            // TODO(jwwishart) this works if there is something BEFORE an identifier.... 
+            // ... what if there is an identifier first?
+            if (statement.rhs && statement.rhs.parts && statement.rhs.parts.length > 0) {
+                statement.rhs.parts.push(part);
+            } else if (statement.rhs) {
+                var tmp = statement.rhs;
+
+                var expression = ast_create_expression();
+                expression.parts.push(tmp);
+                expression.parts.push(part);
+
+                statement.rhs = expression;
+            } else {
+                statement.rhs = part; // TODO(jwwishart) get rid of this scenario for literals etc???
+            }
+        }
+
         while (parser.peek() !== null && parser.peek().type !== endToken) {
             // NULL
             // 
             if (accept(parser.peek(), TOKEN_TYPE_NULL)) {
-                statement.rhs = ast_create_literal('null', 'null');
+                add_expression_part(statement, ast_create_literal('null', 'null'));
 
                 initialized = true;
                 parser.eat();
@@ -850,7 +911,19 @@ var erg;
 
             // Identifier
             if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
-                statement.rhs = ast_create_identifier(parser.peek().text);
+                var tmp = ast_create_identifier(parser.peek().text);
+                add_expression_part(statement, tmp);
+
+                // Check that the identifier is initialized
+                // We just need to check at the current point whether
+                // it is initialized... (I hope!)
+                var var_ident = find_variable_in_scope(currentScope, parser.peek().text);
+                if (var_ident && var_ident.lhs && var_ident.lhs.is_explicitly_uninitialized === true && var_ident.lhs.is_initialized === false) {
+                    console.info("Use of uninitialied variable " + parser.peek().text + " before initialization. " + JSON.stringify(statement));
+                }
+
+                // Function Identifier
+                // TODO(jwwishart) argument might be a function...
 
                 initialized = true;
                 parser.eat();
@@ -861,8 +934,7 @@ var erg;
             //
 
             if (accept(parser.peek(), TOKEN_TYPE_PLUS)) {
-                statement.rhs = statement.rhs || ast_create_expression();
-                statement.rhs.parts.push(ast_create_operator(parser.peek().text));
+                add_expression_part(statement, ast_create_operator(parser.peek().text));
 
                 initialized = true;
                 parser.eat();
@@ -872,12 +944,14 @@ var erg;
             // Literals
             //
             if (accept(parser.peek(), TOKEN_TYPE_STRING_LITERAL)) {
-                if (accept_commas) {
-                    statement.rhs = statement.rhs || ast_create_expression();
-                    statement.rhs.parts.push(ast_create_literal('string', parser.peek().text));
-                } else {
-                    statement.rhs = ast_create_literal('string', parser.peek().text);
-                }
+                // WARNING FOR BELOW: the add_expression_part does setting to rhs if 
+                // no other expression or part is found... lets hope this covers everything
+                // otherwise add_expression_part will have to deal with accept_commas issue
+                //if (accept_commas) {
+                    add_expression_part(statement, ast_create_literal('string', parser.peek().text));
+                //} else {
+                    //statement.rhs = ast_create_literal('string', parser.peek().text);
+                //}
 
                 initialized = true;
                 parser.eat();
@@ -885,12 +959,8 @@ var erg;
             }
 
             if (accept(parser.peek(), TOKEN_TYPE_NUMBER_LITERAL)) {
-                if (accept_commas) {
-                    statement.rhs = statement.rhs || ast_create_expression();
-                    statement.rhs.parts.push(ast_create_literal('int', parser.peek().text));
-                } else {
-                    statement.rhs = ast_create_literal('int', parser.peek().text);
-                }
+                add_expression_part(statement, ast_create_literal('int', parser.peek().text));
+                // WARNING: this dealt with accept_commas like STRING_LITERAL above
 
                 initialized = true;
                 parser.eat();
@@ -900,8 +970,7 @@ var erg;
             if (accept_commas) {
                 // TODO(jwwishart) this is ONLY for function calls? how to enforce in correct scope?
                 if (accept(parser.peek(), TOKEN_TYPE_COMMA)) {
-                    statement.rhs = statement.rhs || ast_create_expression();
-                    statement.rhs.parts.push(ast_create_operator(parser.peek().text));
+                    add_expression_part(statement, ast_create_operator(parser.peek().text));
 
                     initialized = true;
                     parser.eat();
@@ -979,7 +1048,10 @@ var erg;
             }
         }
 
-        if (decl.is_type_determined && !decl.is_initialized && !decl.is_explicitly_uninitialized) {
+        if (decl.is_type_determined && 
+            !decl.is_initialized &&
+            !decl.is_explicitly_uninitialized)
+        {
             // Built-int Types
             //
 
@@ -991,12 +1063,18 @@ var erg;
                 statement.rhs = ast_create_literal('int', '0');
             } else if (decl.data_type === 'bool') {
                 statement.rhs = ast_create_literal('bool', 'false');
+            } else if (decl.data_type === 'any') {
+                statement.rhs = ast_create_literal('any', 'null'); // TODO(jwwishart) any is null by default... not initialized... make sure it is not initialized!!!
             } else {
                 statement.rhs = ast_create_literal("null", "null");
             }
 
             decl.is_type_available = true;
-            decl.is_initialized = true;
+
+            if (decl.data_type !== 'any') {
+                // TODO(jwwishart) is this what we mean.. a variable of type 'any' is not initialized? even though it is to null (see above!)
+                decl.is_initialized = true;
+            }
 
             // Custom Types
             // TODO(jwwishart) go find identifier, determine type :oS
@@ -1031,7 +1109,8 @@ var erg;
         'AST_NODE_TYPE_SCOPE',
         'AST_NODE_TYPE_FUNCTION_SCOPE',
         'AST_NODE_TYPE_STATEMENT',
-        'AST_NODE_TYPE_VARIABLE_DECLARATION'
+        'AST_NODE_TYPE_VARIABLE_DECLARATION',
+        'AST_NODE_TYPE_VARIABLE_ASSIGNMENT'
     ]);
 
 
@@ -1099,8 +1178,11 @@ var erg;
             data_type:          null, // TODO(jwwishart) Cant' assume any... we WANT to have a type!!!
 
             // Flags
-            is_initialized:     false,
+            is_initialized:     false,  // May have initialized it for the user (Default value)
+            is_explicitly_uninitialized: false, // = "something"
             is_type_determined: false,
+
+            // TODO(jwwishart) for primitive types just set this to yes!
             is_type_available:  false
         };
 
@@ -1250,15 +1332,19 @@ var erg;
             }
         }
 
-        if (ast.type === AST_NODE_TYPE_VARIABLE_DECLARATION) {
-            if (ast.lhs.is_explicitly_uninitialized) {
-                result.push(prefix + 'var ' + ast.lhs.identifier + ';');
-            } else if (ast.lhs.is_initialized === false) {
+        if (ast.type === AST_NODE_TYPE_VARIABLE_DECLARATION)
+        {
+            if (ast.lhs.is_explicitly_uninitialized || ast.lhs.is_initialized === false) {
+                // NOTE: we don't let anything be 'undefined'!!!
                 result.push(prefix + 'var ' + ast.lhs.identifier + ' = null;');
             } else {
                 // TODO(jwwishart) process_ast_node(ast.rhs, scope)!!! :oS
                 result.push(prefix + 'var ' + ast.lhs.identifier + ' = ' + process_ast_node(ast.rhs, scope) + ';');
             }
+        }
+
+        if (ast.type === AST_NODE_TYPE_VARIABLE_ASSIGNMENT) {
+            result.push(prefix + ast.lhs.identifier + ' = ' + process_ast_node(ast.rhs, scope) + ';');
         }
 
         if (ast.type === AST_NODE_TYPE_EXPRESSION) {
@@ -1288,11 +1374,17 @@ var erg;
                 return ast.value;
             }
 
+            if (ast.data_type === 'any') {
+                return ast.value;
+            }
+
             throw new Error('ast data_type unknown: ' + ast.data_type);
         }
 
         if (ast.type === AST_NODE_TYPE_OPERATOR) {
-            return ast.operator;
+            // TODO(jwwishart) spaces around are so + has spaces ...
+            // BUT this might not work for other operators :oS
+            return ' ' + ast.operator + ' ';
         }
 
         if (ast.type === AST_NODE_TYPE_IDENTIFIER) {

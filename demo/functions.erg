@@ -1,0 +1,56 @@
+// TODO(jwwishart) MOVE EXPRESSION TESTS OUT INTO expressions.erg
+// TODO(jwwishart) should these programs have a main() function?
+// TODO(jwwishart) should this be an issue? not declared yet?
+// TODO(jwwishart) try other types
+// TODO(jwwishart) try variable list of expression parts
+// TODO(jwwishart) undeclared variabls in function argument expressions don't get picked up
+//   EX: print(me_no_exist)
+// TODO(jwwishart) return types optional
+// TODO(jwwishart) infer return type 
+// TODO(jwwishart) assign result value to variable and validate types
+// TODO(jwwishart)
+// TODO(jwwishart)
+// TODO(jwwishart)
+// TODO(jwwishart)
+
+print("--- simple function tests -----------------------------");
+
+error :: (message) {
+    print("ERROR: " + message);
+}
+
+info :: (message) {
+    print("INFO: " + message);
+}
+
+log :: (message) {
+    print("LOG: " + message);
+}
+
+
+error("AARRGGGHH");
+info("Did you know!");
+log("This is cool");
+
+
+print("--- function call expression ordering -----------------------------");
+
+// Args to function can be literal then variable
+// @BUG this should 
+literal_then_message :: (message) { print("TEST: " + message); }
+literal_then_message("test");
+
+// Args to function can be variable then literal
+message_then_literal :: (message) {
+    print(message + " < was the message");
+}
+message_then_literal("test");
+
+
+
+/* -- ERROR CONDITIONS -------------------------------
+
+// This should fail as := is not valid! for function (OR SHOULD IT DECLARE A FUNCITON POINTER to a given function type??????)
+literal_then_message := (message) { print("TEST: " + message); }
+
+*/
