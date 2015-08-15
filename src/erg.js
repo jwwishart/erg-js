@@ -1342,6 +1342,7 @@ var erg;
 
                     // TODO(jwwishart) @BUG expression parts might have , for arguments passed to function :oS
                     for (var i= 0; i < expPartList.length; i++) {
+                        // TODO(jwwishart) if identifier and identifier is a variable name check that the variable is initialized and warn if not
                         parts += process_ast_node(expPartList[i], scope);
                     }
                 }

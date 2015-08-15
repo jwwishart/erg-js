@@ -7,10 +7,10 @@ type_string : string;
 type_int    : int;
 type_bool   : bool;
 
+// @BUG Warn about use of uninitialized variable usage
+print(type_string);
 
-// @BUG: duplicate variable declaration
 type_string_initialized : string = "what";
-
 
 // Declarations - explicitly initialized to null
 type_string_null_initialized : string = null;
@@ -21,6 +21,7 @@ type_bool_null_initialized   : bool   = null;
 type_string_not_initialized : string = ---;
 type_int_not_initialized    : int    = ---;
 type_bool_not_initialized   : bool   = ---;
+
 
 // Declarations - Initialized by literals
 // TODO(jwwishart) these need type inference
@@ -37,8 +38,6 @@ print(isSuccess);
 - Validate Types
 
 
-
-
 */
 
 
@@ -48,5 +47,6 @@ message := "what?"; // should fail because variable exists
 message := "what?" // no semicolon!
 type_string_assignment_but_no_value  := ; // no value assigned!
 type_string_assignment_but_no_value2 : string = ; // no value assigned!
+you_cant_do_this := ---; // you should have a literal or expression as there is not type and we can't infer the type!
 
 */
