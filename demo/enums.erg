@@ -1,0 +1,6 @@
+
+// TODO(jwwishart) enum should be able to be limited to the given set of values
+// TODO(jwwishart) enum should be able to just provide names for given values (like constants of a given type, but the raw type should be able to be used if a function argument or variable is not a restricted type, but the raw underlying type for example)
+// SEE:  https://vimeo.com/17151234 about 30 mins in.
+
+

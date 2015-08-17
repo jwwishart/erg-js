@@ -8,12 +8,15 @@
 // TODO(jwwishart) return types optional
 // TODO(jwwishart) infer return type 
 // TODO(jwwishart) assign result value to variable and validate types
-// TODO(jwwishart)
+// TODO(jwwishart) multiple arguments
+// TODO(jwwishart) argument type checking
+// TODO(jwwishart) identifier exists in scope already (i.e. function with same name exists in same sccope)
 // TODO(jwwishart)
 // TODO(jwwishart)
 // TODO(jwwishart)
 
-print("--- simple function tests -----------------------------");
+
+print("--- Simple Tests -----------------------------");
 
 error :: (message) {
     print("ERROR: " + message);
@@ -27,13 +30,79 @@ log :: (message) {
     print("LOG: " + message);
 }
 
+anotherError :: (m1, m2, m3) {
+    print("another error: " + m1 + ", " + m2 + ", " + m3);
+}
 
 error("AARRGGGHH");
 info("Did you know!");
 log("This is cool");
+anotherError("one", "two", "three");
 
 
-print("--- function call expression ordering -----------------------------");
+
+
+print("--- Return Types -----------------------------");
+/*
+    TODO:
+    + no return type specified and no return (this is already good!)
+    - no return type but something is returned (return type is Any)
+    - Verify all code paths return something!
+        Last statement is a 'return' statement 
+        OR all paths have a return statement (like if else, both need 'return'!)
+    - 
+
+    ERRORS:
+    -  no return type and return statement not allowed!
+    - 
+*/
+
+
+
+
+
+print("--- Multiple Arguments -----------------------------");
+
+where_in :: (the : bool, world : string) {
+    print(world + " " + the);
+}
+where_in(false, "Is code the world? ");
+
+/* Error Conditions -----------------------------
+
+// TODO(jwwishart) calling this throw an error: "function call to where_in expects 3 arguments but was provided 2"
+where_in :: (the bool, world : string) {
+    print(world + the);
+}
+*/
+
+
+
+print("--- Argument Type Checking -----------------------------");
+
+error("error(string)");
+error(1);
+error(10.10);
+error(false);
+error(true);
+
+// TODO(jwwishart) Arrays and structures don't exist yet!
+//error({});
+//error([]);
+
+only_takes_string :: (message : string) {
+    print(message);
+}
+
+only_takes_string("cool");
+/* --- Error Conditions ------
+only_takes_string(12.121212); // Expected a string, but got a float
+*/
+
+
+
+
+print("--- Function call expression ordering -----------------------------");
 
 // Args to function can be literal then variable
 // @BUG this should 
@@ -48,6 +117,7 @@ message_then_literal("test");
 
 
 
+print("--- Invalid Declarations -----------------------------");
 /* -- ERROR CONDITIONS -------------------------------
 
 // This should fail as := is not valid! for function (OR SHOULD IT DECLARE A FUNCITON POINTER to a given function type??????)

@@ -1,9 +1,14 @@
 ;(function(global){
   var type_string = "";
   var type_int = 0;
+  var type_float = 0.0;
   var type_bool = false;
   var type_any = null;
   var type_any2 = "This should be fine!";
+  console.log(type_any);
+  type_any = "Just happens to have a string now!";
+  console.log(type_any);
+  type_any = true;
   console.log(type_any);
   console.log(type_any2);
   console.log(type_string);
@@ -12,9 +17,11 @@
   var type_string_initialized = "what";
   var type_string_null_initialized = null;
   var type_int_null_initialized = null;
+  var type_float_null_initialized = null;
   var type_bool_null_initialized = null;
   var type_string_not_initialized = null;
   var type_int_not_initialized = null;
+  var type_float_not_initialized = null;
   var type_bool_not_initialized = null;
   console.log(type_string_not_initialized);
   console.log(type_int_not_initialized);
@@ -22,8 +29,10 @@
   console.log(type_int_not_initialized);
   var message = "Hello World";
   var age = 35;
+  var amount = 25.25;
   var isSuccess = true;
   console.log(message);
   console.log(age);
+  console.log(amount);
   console.log(isSuccess);
 }(this));

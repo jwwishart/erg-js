@@ -229,10 +229,26 @@ var erg;
 
         function get_number_literal() {
             var result = '';
+            var is_float = false;
 
+            // TODO(jwwishart) 3_456_789 should parse fine... easier
             // TODO(jwwishart) floats, decimal, hex, exponents etc.
 
             while((c = peek()) !== null) {
+                // TODO(jwwishart) ignore spaces
+
+                if (c === '.') {
+                    // TODO(jwwishart) test this!
+                    if (is_float === true) {
+                        throw new Error("Error Trying to parse string literal: '" + result + ".' - found multiple periods while trying to parse number");
+                    }
+
+                    is_float = true;
+                    result += c;
+                    eat();
+                    continue;
+                }
+
                 if (c >= '0' && c <= '9') {
                     result += c;
                     eat();
@@ -242,7 +258,10 @@ var erg;
                 break;
             }
 
-            return result;
+            return {
+                result: result,
+                is_float: is_float
+            }
         }
 
         function try_map_char_to_token(c) {
@@ -353,10 +372,13 @@ var erg;
                     }
 
                     // Number Literals
-                    // TODO(jwwishart) ints only, support floats etc.
+                    // TODO(jwwishart) infer the type and assign with the token (float32, float64?.. assign as minimum_type_required for example
                     if (c >= '0' && c <= '9') {
                         token = create_token(TOKEN_TYPE_NUMBER_LITERAL, '');
-                        token.text = get_number_literal();
+                        
+                        var number_result = get_number_literal();
+                        token.text = number_result.result;
+                        token.is_float = number_result.is_float;
 
                         return token;
                     }
@@ -624,9 +646,12 @@ var erg;
                             type = 'string';
                         } else if (parser.peek().text === 'int') {
                             type = 'int';
+                        } else if (parser.peek().text === 'float') {
+                            type = 'float';
                         } else if (parser.peek().text === 'bool') {
                             type = 'bool';
                         }
+
                         // TODO(jwwishart) other built in types
 
                         parser.eat(); // eat type
@@ -685,18 +710,19 @@ var erg;
             throw new Error("Function call to " + funcDecl.identifier + " expects " + expectedArgCount + " arguments but was provided " + foundArgCount);
         }
 
-        for (var i = 0; i < funcDecl.parameters.length; i++) {
-            if (funcDecl.parameters[i].data_type !== 'any') {
-                // Literal Expressions (single one)
-                if (funcCall.rhs && funcCall.rhs.parts) {
-                    if (funcCall.rhs.parts[i].data_type !== funcDecl.parameters[i].data_type) {
-                        throw new Error("Function call " + funcDecl.identifier + " expects argument " + i + " to be of type " + funcDecl.parameters[i].data_type + " but was provided a literal of type " + funcCall.expression.parts[i].data_type);
-                    }
-                }
+        // NOTE(jwwishart) we do this in caller: parse_function_execution
+        // for (var i = 0; i < funcDecl.parameters.length; i++) {
+        //     if (funcDecl.parameters[i].data_type !== 'any') {
+        //         // Literal Expressions (single one)
+        //         if (funcCall.rhs && funcCall.rhs.parts) {
+        //             if (funcCall.rhs.parts[i].data_type !== funcDecl.parameters[i].data_type) {
+        //                 throw new Error("Function call " + funcDecl.identifier + " expects argument " + (i + 1) + " to be of type " + funcDecl.parameters[i].data_type + " but was provided a literal of type " + funcCall.rhs.parts[i].data_type);
+        //             }
+        //         }
 
-                // Evaluatable expressoins (need to do type inference first!!!)
-            }
-        }
+        //         // Evaluatable expressoins (need to do type inference first!!!)
+        //     }
+        // }
     }
 
     function parse_function_declaration(currentScope, parser, identifier) {
@@ -714,6 +740,30 @@ var erg;
     }
 
     function parse_function_execution(currentScope, parser, identifier) {
+        function get_argument_n(parts, arg_no) {
+            var at = 0;
+
+            // RHS parts is 
+            if (!parts) {
+                return null;
+            }
+
+            for (var i = 0; i < parts.length; i++) {
+                // Skip commas!
+                if (parts[i].type === AST_NODE_TYPE_OPERATOR && parts[i].operator === ',') {
+                    continue;
+                }
+
+                if (at === arg_no) {
+                    return parts[i];
+                }
+                
+                at++;
+            }
+
+            return null;
+        }
+
         var funcCall = ast_create_function_call({
             identifier: identifier,
             found: false
@@ -736,6 +786,34 @@ var erg;
         //
 
         parse_function_arguments(currentScope, parser, funcCall, funcDecl);
+
+        // Validate Argument Types against parameter types
+        for (var i in funcDecl.parameters) {
+            var param_type = funcDecl.parameters[i].data_type;
+            // TODO(jwwishart) what if no rhs
+            // TODO(jwwishart) what if no rhs.parts
+            // TODO(jwwishart) REMOVE rhs having expression, ALWAYS have parts
+            // TODO(jwwishart) what if nothing in parts?
+            // TODO(jwwishart) what if data_type of FIRST part is any
+            // TODO(jwwishart) what if data_type of parts is different: first is string, next a number etc.
+            var argument_type = funcCall.rhs.parts ? funcCall.rhs.parts[0].data_type : funcCall.rhs.data_type;
+
+            var arg = get_argument_n(funcCall.rhs.parts, parseInt(i, 10));
+
+            // Argument not provided        
+            if (arg == null && funcCall.rhs.parts) {
+                throw new Error("Call to function: '" + funcCall.identifier + "' was not provided argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but an argument was not provided: " + JSON.stringify(parser.peek()));
+            } else if (arg != null) {
+                argument_type = arg.data_type;
+            }
+
+            if (param_type === 'any') {
+            } else {
+                if (param_type !== argument_type) {
+                    throw new Error("Call to function: '" + funcCall.identifier + "' provides incorrect type for argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but got a '" + argument_type + "'" + JSON.stringify(parser.peek()));
+                }
+            }
+        }
 
         currentScope.statements.push(funcCall);
     }
@@ -959,7 +1037,12 @@ var erg;
             }
 
             if (accept(parser.peek(), TOKEN_TYPE_NUMBER_LITERAL)) {
-                add_expression_part(statement, ast_create_literal('int', parser.peek().text));
+                if (parser.peek().is_float) {
+                    add_expression_part(statement, ast_create_literal('float', parser.peek().text));
+                } else {
+                    add_expression_part(statement, ast_create_literal('int', parser.peek().text));
+                }
+
                 // WARNING: this dealt with accept_commas like STRING_LITERAL above
 
                 initialized = true;
@@ -1061,6 +1144,8 @@ var erg;
                 statement.rhs = ast_create_literal('string', '');
             } else if (decl.data_type === 'int') {
                 statement.rhs = ast_create_literal('int', '0');
+            } else if (decl.data_type === 'float') {
+                statement.rhs = ast_create_literal('float', '0.0');
             } else if (decl.data_type === 'bool') {
                 statement.rhs = ast_create_literal('bool', 'false');
             } else if (decl.data_type === 'any') {
@@ -1367,6 +1452,10 @@ var erg;
             }
 
             if (ast.data_type === 'int') {
+                return ast.value;
+            }
+
+            if (ast.data_type === 'float') {
                 return ast.value;
             }
 

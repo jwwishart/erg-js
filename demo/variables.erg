@@ -5,12 +5,13 @@
 // Declarations - initialized to default value
 type_string : string;
 type_int    : int;
+type_float  : float;
 type_bool   : bool;
 type_any    : any;
 
 type_any2    : any = "This should be fine!";
 
-print(type_any); // PRints null as type_any is null
+print(type_any); // Prints null as type_any is null
 // @BUG this doesn't work ... anything should be able to..
 // be assigned to an any variable!
 type_any = "Just happens to have a string now!";
@@ -34,12 +35,14 @@ type_string_initialized : string = "what";
 // Declarations - explicitly initialized to null
 type_string_null_initialized : string = null;
 type_int_null_initialized    : int    = null;
+type_float_null_initialized  : float  = null;
 type_bool_null_initialized   : bool   = null;
 
 // Declarations - explicitly not initialized
 // TODO(jwwishart) should uninitialized variables actually be set to null? not left as undefined? in JS compile target?
 type_string_not_initialized : string = ---;
 type_int_not_initialized    : int    = ---;
+type_float_not_initialized  : float  = ---;
 type_bool_not_initialized   : bool   = ---;
 
 print(type_string_not_initialized); // @WARN this should show a warning
@@ -53,10 +56,12 @@ print(type_int_not_initialized); // This should NOT warn as it is now initialize
 // TODO(jwwishart) these need type inference
 message := "Hello World";
 age := 35;
+amount := 25.25;
 isSuccess := true;
 
 print(message);
 print(age);
+print(amount);
 print(isSuccess);
 
 /*** TODOS ********************************************************************
