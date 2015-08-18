@@ -1,6 +1,39 @@
 
 
-variable-declaration
+Summary of hierarchy - overview.
+
+statement
+    declarations
+        variable_declaration
+            identifier
+            data_type (default: any)
+
+            initialization_flags
+                is_explicity_uninitialization
+                is_initialized
+                is_type_determined
+                is_type_available
+            rhs
+                [] expression
+
+        constant_declaration
+            [same as variable_declaration]
+
+        type_declaration (struct)
+
+        enum_declaration (restricted & unrestricted?)
+
+        function_declaration
+
+    block (scope)
+        statements (ad infinitum)
+
+
+
+
+
+
+variable_declaration
     type             : AST_NODE_TYPE_VARIABLE_DECLARATION
     
     identifier       : identifier
@@ -9,4 +42,10 @@ variable-declaration
     // Flags
     isInitialized    : bool = false
     isTypeDetermined : bool = false
+
+    rhs              : [] expression
+
+
+
+
 

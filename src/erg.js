@@ -123,9 +123,11 @@ var erg;
 
         // Symbols
         'TOKEN_TYPE_PLUS',
+        'TOKEN_TYPE_DOT',
 
         'TOKEN_TYPE_ASSIGNMENT',
-        'TOKEN_TYPE_UNINITIALIZE_OPERATOR'
+        'TOKEN_TYPE_UNINITIALIZE_OPERATOR',
+        'TOKEN_TYPE_ASM_BLOCK'
     ]);
 
     erg.createTokenizer = function(scanner) {
@@ -144,7 +146,8 @@ var erg;
             ';'  : TOKEN_TYPE_SEMICOLON,
             ','  : TOKEN_TYPE_COMMA,
             
-            '+'  : TOKEN_TYPE_PLUS
+            '+'  : TOKEN_TYPE_PLUS,
+            '.'  : TOKEN_TYPE_DOT
             // '='  : TOKEN_TYPE_ASSIGNMENT must handle custom because of := and == etc.
         };
 
@@ -217,6 +220,34 @@ var erg;
                 if (c === '"'){
                     eat(); // Eat the final "
                     break;
+                }
+
+                result += c;
+                eat();
+            }
+
+            return result;
+        }
+
+        function get_asm_block() {
+            var result = '';
+            var depth = 0;
+            var foundStart = false;
+
+            while ((c = peek()) !== null) {
+                if (depth === 0 && foundStart) break;
+
+                if (c === "{") {
+                    foundStart = true;
+                    depth++;
+                    eat(); // Skip adding the opening {
+                    continue; 
+                }
+
+                if (c === "}" && foundStart) {
+                    depth--;
+                    eat(); // Skip adding the closing }
+                    continue; 
                 }
 
                 result += c;
@@ -365,7 +396,7 @@ var erg;
 
                     // String Literals
                     if (c === '"') {
-                        token = create_token(TOKEN_TYPE_STRING_LITERAL, '');
+                        token = create_token(TOKEN_TYPE_STRING_LITERAL, '"');
                         token.text = get_string_literal();
 
                         return token;
@@ -373,9 +404,11 @@ var erg;
 
                     // Number Literals
                     // TODO(jwwishart) infer the type and assign with the token (float32, float64?.. assign as minimum_type_required for example
+                    // TODO(jwwishart) negative numbers :oS
                     if (c >= '0' && c <= '9') {
                         token = create_token(TOKEN_TYPE_NUMBER_LITERAL, '');
                         
+
                         var number_result = get_number_literal();
                         token.text = number_result.result;
                         token.is_float = number_result.is_float;
@@ -431,6 +464,16 @@ var erg;
                     if (/[a-zA-Z]/gi.test(c)) {
                         token = create_token(TOKEN_TYPE_IDENTIFIER, '');
                         token.text = get_identifier();
+
+                        // Special keyword
+                        if (token.text === "asm") {
+                            token = create_token(TOKEN_TYPE_ASM_BLOCK, '')
+
+                            // Parse asm block!
+                            var asm = get_asm_block();
+                            token.text = asm;
+                        }
+
                         return token;
                     }
 
@@ -525,7 +568,7 @@ var erg;
             if (scope.statements && scope.statements.length > 0) {
                 for (var i = 0; i < scope.statements.length; i++) {
                     if (scope.statements[i].type === AST_NODE_TYPE_VARIABLE_DECLARATION &&
-                        scope.statements[i].lhs.identifier === varName)
+                        scope.statements[i].identifier === varName)
                     {
                         return scope.statements[i];
                     }
@@ -704,7 +747,7 @@ var erg;
         // TODO(jwwishart) @BUG found args counts ALL parts of the expression which
         // could include the ',' separating arguments :o(
         // Count expressions that are not ','
-        var foundArgCount = count_args(funcCall.rhs.parts);
+        var foundArgCount = count_args(funcCall.arguments.parts);
 
         if (expectedArgCount !== foundArgCount) {
             throw new Error("Function call to " + funcDecl.identifier + " expects " + expectedArgCount + " arguments but was provided " + foundArgCount);
@@ -790,18 +833,14 @@ var erg;
         // Validate Argument Types against parameter types
         for (var i in funcDecl.parameters) {
             var param_type = funcDecl.parameters[i].data_type;
-            // TODO(jwwishart) what if no rhs
-            // TODO(jwwishart) what if no rhs.parts
-            // TODO(jwwishart) REMOVE rhs having expression, ALWAYS have parts
-            // TODO(jwwishart) what if nothing in parts?
             // TODO(jwwishart) what if data_type of FIRST part is any
             // TODO(jwwishart) what if data_type of parts is different: first is string, next a number etc.
-            var argument_type = funcCall.rhs.parts ? funcCall.rhs.parts[0].data_type : funcCall.rhs.data_type;
+            var argument_type = funcCall.arguments.parts && funcCall.arguments.parts.length > 0 ? funcCall.arguments.parts[0].data_type : 'unknown-data-type';
 
-            var arg = get_argument_n(funcCall.rhs.parts, parseInt(i, 10));
+            var arg = get_argument_n(funcCall.arguments.parts, parseInt(i, 10));
 
             // Argument not provided        
-            if (arg == null && funcCall.rhs.parts) {
+            if (arg == null && funcCall.arguments.parts) {
                 throw new Error("Call to function: '" + funcCall.identifier + "' was not provided argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but an argument was not provided: " + JSON.stringify(parser.peek()));
             } else if (arg != null) {
                 argument_type = arg.data_type;
@@ -818,7 +857,38 @@ var erg;
         currentScope.statements.push(funcCall);
     }
 
+    function determine_datatype_from_expression(parts) {
+        var expected_type = 'any';
+
+        for (var i = 0; i < parts.length; i++) {
+            // First one found that is not any
+            if (expected_type === 'any' && expected_type !== parts[i].data_type) {
+                expected_type = parts[i].data_type;
+                continue;
+            } else if (expected_type === parts[i].data_type) {
+                continue;
+            }
+
+            throw new Error("Expression parts are different data types :o(" + JSON.stringify(parts));
+        }
+
+        return expected_type;
+    }
+
+
     function parse_statement(currentScope, parser) {
+        if (accept(parser.peek(), TOKEN_TYPE_ASM_BLOCK)) {
+            var statement = ast_create_statement({
+                type: AST_NODE_TYPE_ASM,
+                rhs: {
+                    parts: []
+                }
+            });
+
+            statement.rhs.parts.push(ast_create_literal("asm", parser.peek().text));
+            currentScope.statements.push(statement)
+        }
+
         // Declarations
         //
         if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
@@ -832,6 +902,8 @@ var erg;
                 var existing_variable_decl = find_variable_in_scope(currentScope, identifier);
 
                 parser.eat(); // eat identifier!
+
+
 
                 // Variable Declarations
                 //
@@ -875,8 +947,8 @@ var erg;
                     var statement = {
                         type: AST_NODE_TYPE_VARIABLE_ASSIGNMENT,
 
-                        lhs: existing_variable_decl.lhs, // TODO(jwwishart) is this a good idea? Or should I clone? might loose in-the-moment
-                        rhs: null
+                        lhs: existing_variable_decl, // TODO(jwwishart) is this a good idea? Or should I clone? might loose in-the-moment
+                        rhs: ast_create_expression()
                     };
 
                     statement = ast_create_statement(statement);
@@ -890,7 +962,7 @@ var erg;
                     // Type Missmatch?
                     // TODO(jwwishart) move lhs and rhs checking
                     // TODO(jwwishart) accept assignment of anything to if lhs type is 'any'
-                    if (statement.lhs.data_type !== 'any' && statement.lhs.data_type !== statement.rhs.data_type) {
+                    if (statement.lhs.data_type !== 'any' && statement.lhs.data_type !== determine_datatype_from_expression(statement.rhs.parts)) {
                         throw new Error("Assignment of value of type '" + statement.rhs.data_type + "' to variable of type '" + statement.lhs.data_type + "' is not allowed. " + JSON.stringify(statement) + " ::: " + JSON.stringify(identifierToken));
                     }
 
@@ -940,20 +1012,14 @@ var erg;
 
         // TODO(jwwishart) ast_create_expression should always be assigned to rhs IF it is an expression only... never literals???????
         function add_expression_part(statement, part) {
-            // TODO(jwwishart) this works if there is something BEFORE an identifier.... 
-            // ... what if there is an identifier first?
-            if (statement.rhs && statement.rhs.parts && statement.rhs.parts.length > 0) {
+            if (statement.type === AST_NODE_TYPE_FUNCTION_CALL) {
+                statement.arguments.parts.push(part);
+            } else if (statement.type === AST_NODE_TYPE_VARIABLE_DECLARATION) {
                 statement.rhs.parts.push(part);
-            } else if (statement.rhs) {
-                var tmp = statement.rhs;
-
-                var expression = ast_create_expression();
-                expression.parts.push(tmp);
-                expression.parts.push(part);
-
-                statement.rhs = expression;
+            } else if (statement.type === AST_NODE_TYPE_VARIABLE_ASSIGNMENT) {
+                statement.rhs.parts.push(part);
             } else {
-                statement.rhs = part; // TODO(jwwishart) get rid of this scenario for literals etc???
+                throw new Error("Can't add  part to unknown statement type: " + JSON.stringify(statement) + " ::: " + JSON.stringify(parser.peek()))
             }
         }
 
@@ -971,15 +1037,7 @@ var erg;
             // Boolean Literal
             if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
                 if (parser.peek().text === "true" || parser.peek().text === "false"){
-                    if (accept_commas) {
-                        statement.rhs = statement.rhs || ast_create_expression();
-                        statement.rhs.parts.push(ast_create_literal('bool', parser.peek().text));
-                    } else {
-                        statement.rhs = ast_create_literal('bool', parser.peek().text);
-                    }
-
-                    // Special as bool value is identifier not parsed like strings and numbers
-                    statement.data_type = 'bool';
+                    add_expression_part(statement, ast_create_literal('bool', parser.peek().text));
 
                     initialized = true;
                     parser.eat();
@@ -989,8 +1047,7 @@ var erg;
 
             // Identifier
             if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
-                var tmp = ast_create_identifier(parser.peek().text);
-                add_expression_part(statement, tmp);
+                add_expression_part(statement, ast_create_identifier(parser.peek().text));
 
                 // Check that the identifier is initialized
                 // We just need to check at the current point whether
@@ -1022,14 +1079,7 @@ var erg;
             // Literals
             //
             if (accept(parser.peek(), TOKEN_TYPE_STRING_LITERAL)) {
-                // WARNING FOR BELOW: the add_expression_part does setting to rhs if 
-                // no other expression or part is found... lets hope this covers everything
-                // otherwise add_expression_part will have to deal with accept_commas issue
-                //if (accept_commas) {
-                    add_expression_part(statement, ast_create_literal('string', parser.peek().text));
-                //} else {
-                    //statement.rhs = ast_create_literal('string', parser.peek().text);
-                //}
+                add_expression_part(statement, ast_create_literal('string', parser.peek().text));
 
                 initialized = true;
                 parser.eat();
@@ -1042,8 +1092,6 @@ var erg;
                 } else {
                     add_expression_part(statement, ast_create_literal('int', parser.peek().text));
                 }
-
-                // WARNING: this dealt with accept_commas like STRING_LITERAL above
 
                 initialized = true;
                 parser.eat();
@@ -1071,25 +1119,12 @@ var erg;
 
     function parse_variable_declaration(currentScope, parser, identifier, data_type_identifier, assignment_expected) {
         var decl = {
-            identifier:         identifier,
-            data_type:          data_type_identifier || 'any',
-
-            is_initialized:     false,
-            is_explicitly_uninitialized: false,
+            identifier: identifier,
+            data_type: data_type_identifier || 'any',
             is_type_determined: !!data_type_identifier, // whether infered or explicity
-            is_type_available:  false  // type has been verified!
         };
 
-        var statement = {
-            type: AST_NODE_TYPE_VARIABLE_DECLARATION,
-
-            lhs: decl,
-            rhs: null
-        };
-
-        statement = ast_create_statement(statement);
-        decl = statement.lhs = ast_create_variable_declaration(decl);
-
+        decl = ast_create_variable_declaration(decl);
 
         // Parse End or Assignment
         //
@@ -1108,7 +1143,7 @@ var erg;
                     decl.is_explicitly_uninitialized = true;
                     parser.eat();
                 } else {
-                    decl.is_initialized = parse_expression(currentScope, parser, statement);
+                    decl.is_initialized = parse_expression(currentScope, parser, decl);
 
                     if (!decl.is_initialized) {
                        throw new Error("Expected literal or expression for assignment: " + JSON.stringify(parser.peek()));
@@ -1116,7 +1151,7 @@ var erg;
                 }
             } else {
                 // Literal Expected???
-                decl.is_initialized = parse_expression(currentScope, parser, statement);
+                decl.is_initialized = parse_expression(currentScope, parser, decl);
 
                 // TODO(jwwishart) what about identifier? ...
                 // parse_expression should handle that?
@@ -1138,20 +1173,18 @@ var erg;
             // Built-int Types
             //
 
-            statement.rhs = ast_create_expression();
-
             if (decl.data_type === 'string') {
-                statement.rhs = ast_create_literal('string', '');
+                decl.rhs.parts.push(ast_create_literal('string', ''));
             } else if (decl.data_type === 'int') {
-                statement.rhs = ast_create_literal('int', '0');
+                decl.rhs.parts.push(ast_create_literal('int', '0'));
             } else if (decl.data_type === 'float') {
-                statement.rhs = ast_create_literal('float', '0.0');
+                decl.rhs.parts.push(ast_create_literal('float', '0.0'));
             } else if (decl.data_type === 'bool') {
-                statement.rhs = ast_create_literal('bool', 'false');
+                decl.rhs.parts.push(ast_create_literal('bool', 'false'));
             } else if (decl.data_type === 'any') {
-                statement.rhs = ast_create_literal('any', 'null'); // TODO(jwwishart) any is null by default... not initialized... make sure it is not initialized!!!
+                decl.rhs.parts.push(ast_create_literal('any', 'null')); // TODO(jwwishart) any is null by default... not initialized... make sure it is not initialized!!!
             } else {
-                statement.rhs = ast_create_literal("null", "null");
+                decl.rhs.parts.push(ast_create_literal("null", "null"));
             }
 
             decl.is_type_available = true;
@@ -1170,7 +1203,7 @@ var erg;
         // ... so fail!
         // TODO(jwwishart) should validate that the expression makes sense here! :o(
 
-        currentScope.statements.push(statement);
+        currentScope.statements.push(decl);
     }
 
 
@@ -1195,7 +1228,8 @@ var erg;
         'AST_NODE_TYPE_FUNCTION_SCOPE',
         'AST_NODE_TYPE_STATEMENT',
         'AST_NODE_TYPE_VARIABLE_DECLARATION',
-        'AST_NODE_TYPE_VARIABLE_ASSIGNMENT'
+        'AST_NODE_TYPE_VARIABLE_ASSIGNMENT',
+        'AST_NODE_TYPE_ASM',
     ]);
 
 
@@ -1219,11 +1253,13 @@ var erg;
     // AST Generation Functions
     //
 
+    var ast_node_id = 0;
+
     function ast_create_node(type, addFields) {
         var result = addFields || {};
         result.type = type || AST_NODE_TYPE_UNKNOWN;
         result.typeName = get_global_constant_name('AST_NODE_TYPES', type);
-        
+        result.guid = ast_node_id++;    
         return result;
     }
 
@@ -1268,7 +1304,8 @@ var erg;
             is_type_determined: false,
 
             // TODO(jwwishart) for primitive types just set this to yes!
-            is_type_available:  false
+            is_type_available:  false,
+            rhs: ast_create_expression()
         };
 
         var def = extend({}, defaults, definition);
@@ -1338,7 +1375,9 @@ var erg;
             identifier: '',
             builtin: false,
             found: false,
-            expression: null // list of expressions!
+
+            arguments: ast_create_expression(), // list of expressions!
+            body: [] // statements
         };
 
         var def = extend({}, defaults, definition);
@@ -1417,14 +1456,20 @@ var erg;
             }
         }
 
+        if (ast.type === AST_NODE_TYPE_ASM) {
+            result.push("\n// RAW ASM OUTPUT START (javascript -------------------------\n");
+            result.push(ast.rhs.parts[0].value.trim());
+            result.push("\n// RAW ASM OUTPUT END (javascript) --------------------------\n");
+        }
+
         if (ast.type === AST_NODE_TYPE_VARIABLE_DECLARATION)
         {
-            if (ast.lhs.is_explicitly_uninitialized || ast.lhs.is_initialized === false) {
+            if (ast.is_explicitly_uninitialized || ast.is_initialized === false) {
                 // NOTE: we don't let anything be 'undefined'!!!
-                result.push(prefix + 'var ' + ast.lhs.identifier + ' = null;');
+                result.push(prefix + 'var ' + ast.identifier + ' = null;');
             } else {
                 // TODO(jwwishart) process_ast_node(ast.rhs, scope)!!! :oS
-                result.push(prefix + 'var ' + ast.lhs.identifier + ' = ' + process_ast_node(ast.rhs, scope) + ';');
+                result.push(prefix + 'var ' + ast.identifier + ' = ' + process_ast_node(ast.rhs, scope) + ';');
             }
         }
 
@@ -1514,17 +1559,11 @@ var erg;
                 parts += funcName + '(';
 
                 // Argument Expressions?
-                if (ast.rhs) {
-                    if (ast.rhs.parts) {
-                        expPartList = ast.rhs.parts; 
-                    } else {
-                        expPartList.push(ast.rhs);
-                    }
-
+                if (ast.arguments) {
                     // TODO(jwwishart) @BUG expression parts might have , for arguments passed to function :oS
-                    for (var i= 0; i < expPartList.length; i++) {
+                    for (var i= 0; i < ast.arguments.parts.length; i++) {
                         // TODO(jwwishart) if identifier and identifier is a variable name check that the variable is initialized and warn if not
-                        parts += process_ast_node(expPartList[i], scope);
+                        parts += process_ast_node(ast.arguments.parts[i], scope);
                     }
                 }
 

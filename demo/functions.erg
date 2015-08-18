@@ -58,6 +58,16 @@ print("--- Return Types -----------------------------");
 */
 
 
+test :: () {
+    test_internal :: () {
+        print("Hello World from test()>test_internal()");
+    }
+
+    test_internal();
+}
+
+test();
+// CORRECT: this is not accessible: test_internal();
 
 
 
@@ -75,6 +85,27 @@ where_in :: (the bool, world : string) {
     print(world + the);
 }
 */
+
+
+name := "Justin Wishart";
+age := 35;
+
+
+print_message :: (name, age) {
+    print("Hello, my name is '" + name + "' and I'm " + age + " years of age");
+}
+
+print_message2 :: (n, a) {
+    print("Hello, my name is '" + n + "' and I'm " + a + " years of age");
+}
+
+print_message_closed :: () {
+    print("Hello, my name is '" + name + "' and I'm " + age + " years of age");
+}
+
+print_message(name, age);
+print_message2(name, age);
+print_message_closed();
 
 
 
@@ -99,6 +130,21 @@ only_takes_string("cool");
 only_takes_string(12.121212); // Expected a string, but got a float
 */
 
+
+some_numbers :: (an_int : int, a_float : float) {
+    print("an_int: " + an_int + ", a_float: " + a_float);
+}
+
+some_numbers(1, 1.01);
+some_numbers(100, 124.1241);
+
+/* ERROR CONDITIONS
+some_numbers(100.12, 124); // argument order wrong. types are checked and are wrong!
+*/
+
+
+// @Bug this should work... negative numbers :o(
+// some_numbers(-123, 1.01);
 
 
 

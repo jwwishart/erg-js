@@ -8,12 +8,10 @@ type_int    : int;
 type_float  : float;
 type_bool   : bool;
 type_any    : any;
+type_any2   : any = "This should be fine!";
 
-type_any2    : any = "This should be fine!";
-
+// 'any' type assignment checks
 print(type_any); // Prints null as type_any is null
-// @BUG this doesn't work ... anything should be able to..
-// be assigned to an any variable!
 type_any = "Just happens to have a string now!";
 print(type_any); // SHould print the string
 type_any = true;
@@ -21,13 +19,9 @@ print(type_any); // Should print the boolean value
 
 print(type_any2);
 
-// Note: type_string is initialized to default values!
+// test default initializiation and assignments
 print(type_string);
-
 type_string = "now it has a non-default value";
-
-// @BUG this should error type missmatch
-
 print(type_string);
 
 type_string_initialized : string = "what";

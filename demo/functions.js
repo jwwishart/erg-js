@@ -17,6 +17,13 @@
   log("This is cool");
   anotherError("one" , "two" , "three");
   console.log("--- Return Types -----------------------------");
+  function test() {
+    function test_internal() {
+      console.log("Hello World from test()>test_internal()");
+    }
+    test_internal();
+  }
+  test();
   console.log("--- Multiple Arguments -----------------------------");
   function where_in(the, world) {
     console.log(world + " " + the);
@@ -32,6 +39,11 @@
     console.log(message);
   }
   only_takes_string("cool");
+  function some_numbers(an_int, a_float) {
+    console.log("an_int: " + an_int + ", a_float: " + a_float);
+  }
+  some_numbers(1 , 1.01);
+  some_numbers(100 , 124.1241);
   console.log("--- Function call expression ordering -----------------------------");
   function literal_then_message(message) {
     console.log("TEST: " + message);

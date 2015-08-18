@@ -1,0 +1,8 @@
+
+woo_hoo :: (message) {
+    asm {
+        console.log(message.toUpperCase());
+    }
+}
+
+woo_hoo("This is the asm... to remember!");
