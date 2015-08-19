@@ -1,0 +1,9 @@
+
+print("Compiling File: " + #filename);
+
+
+/* ERROR SCENARIOS
+// Can't use #filename directive at statement level!
+#filename 
+
+*/

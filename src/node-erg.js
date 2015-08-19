@@ -28,8 +28,10 @@ if (process.argv.length > 2) {
 }
 
 if (toCompile.length > 0) {
-    var output = erg.compile(toCompile[0].contents, true);
-    var newFilename = path.basename(toCompile[0].path, '.erg') + '.js';
+    var filename = path.basename(toCompile[0].path, '.erg');
+
+    var output = erg.compile(filename + '.erg', toCompile[0].contents, true);
+    var newFilename =  filename + '.js';
     
     writeJavaScript(newFilename, output);
 }

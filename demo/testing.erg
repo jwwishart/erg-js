@@ -1,8 +1,22 @@
 
-woo_hoo :: (message) {
+
+print_uppercase :: (str: string) {
     asm {
-        console.log(message.toUpperCase());
+        console.log(str.toUpperCase());
     }
 }
 
-woo_hoo("This is the asm... to remember!");
+// Try calling with literal and directive
+print_uppercase("Compiling File: " + #filename);
+
+
+// Try using variable declaration types prefixed to the filename
+prefix1 := "Compiling File: ";
+prefix2 : string = "Compiling File: ";
+
+print_uppercase(prefix1 + #filename);
+print_uppercase(prefix2 + #filename);
+
+
+// Try different ordering... declaration and string literal
+print_uppercase(#filename + " is being compiled...");

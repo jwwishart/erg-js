@@ -50,7 +50,7 @@ var erg;
     // @Scanner ----------------------------------------------------------------
     // 
 
-    erg.createScanner = function create_scanner(code) {
+    erg.createScanner = function create_scanner(filename, code) {
         var i = 0;
         var firstCol = 1;
 
@@ -80,7 +80,8 @@ var erg;
             get_position_info: function() {
                 return {
                     lineNo: lineNo,
-                    colNo: colNo
+                    colNo: colNo,
+                    filename: filename
                 };
             }
         };
@@ -127,7 +128,8 @@ var erg;
 
         'TOKEN_TYPE_ASSIGNMENT',
         'TOKEN_TYPE_UNINITIALIZE_OPERATOR',
-        'TOKEN_TYPE_ASM_BLOCK'
+        'TOKEN_TYPE_ASM_BLOCK',
+        'TOKEN_TYPE_DIRECTIVE'
     ]);
 
     erg.createTokenizer = function(scanner) {
@@ -171,6 +173,7 @@ var erg;
             var pos = scanner.get_position_info();
             token.lineNo = pos.lineNo;
             token.colNo = pos.colNo;
+            token.filename = pos.filename;
         }
 
         function create_token(type, text) {
@@ -181,7 +184,8 @@ var erg;
                 typeName: get_global_constant_name('TOKEN_TYPES', type),
                 text: text,
                 lineNo: pos.lineNo,
-                colNo: pos.colNo
+                colNo: pos.colNo,
+                filename: pos.filename
             };
         }
 
@@ -255,6 +259,62 @@ var erg;
             }
 
             return result;
+        }
+
+        var SINGLE_VALUE_DIRECTIVE = false;
+        var MULTIPLE_VALUE_DIRECTIVE = true;
+
+        var directive_meta = {
+            'filename': SINGLE_VALUE_DIRECTIVE
+        };
+
+        function get_directive() {
+            var directive = '';
+            var args = '';
+            var result = '';
+
+            /*
+                There are several types of directives
+                - single-value directives which just do their thing
+                    ex: #filename
+                - multiple value directives which go to the end of the line
+                    ex: #build_target javascript es6
+
+                We have to KNOW this at THIS point!
+            */
+
+            // parse the first bit of the token.
+            while ((c = peek()) !== null) {
+                var ascii = c.charCodeAt(0);
+                if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || ascii < 65 || ascii > 122) {
+                    break;
+                }
+
+                result += c;
+                eat();
+            }
+
+            directive = result;
+            result = '';
+
+            var type = directive_meta[directive];
+            if (type === SINGLE_VALUE_DIRECTIVE) {
+                return directive;
+            }
+
+            while ((c = peek()) !== null) {
+                if (c === '\n' || c === '\r') {
+                    result += c;
+                    args = result;
+                    result = '';
+                    break;
+                }
+
+                result += c;
+                eat();
+            }
+
+            return directive + ' ' + args;
         }
 
 
@@ -459,6 +519,14 @@ var erg;
                             }
                         }
                         // TODO(jwwishart) minus
+                    }
+
+                    if (c === '#') {
+                        eat();
+
+                        var directive = get_directive();
+                        token = create_token(TOKEN_TYPE_DIRECTIVE, directive);
+                        return token;
                     }
 
                     if (/[a-zA-Z]/gi.test(c)) {
@@ -785,10 +853,11 @@ var erg;
     function parse_function_execution(currentScope, parser, identifier) {
         function get_argument_n(parts, arg_no) {
             var at = 0;
+            var results = [];
 
             // RHS parts is 
             if (!parts) {
-                return null;
+                return [];
             }
 
             for (var i = 0; i < parts.length; i++) {
@@ -797,14 +866,61 @@ var erg;
                     continue;
                 }
 
+                // Push all parts for a given argument
                 if (at === arg_no) {
-                    return parts[i];
+                    results.push(parts[i]);
                 }
                 
                 at++;
             }
 
-            return null;
+            return results;
+        }
+
+        // Takes ALL argument values and operators and determines the most
+        // likely type :oS
+        function determine_type(args) {
+            var type = null;
+
+            function try_set_type(t) {
+                if (type === null) {
+                    type = t;
+                } else if (type !== t && type !== 'any') {
+                    // TODO(jwwishart) I need to figure out casting then this will go
+                    throw new Error("Missmatched types: TODO(jwwishart) I need to figure out casting then this will go");
+                }
+            }
+
+            for (var i =0 ; i < args.length; i++) {
+                var item = args[i];
+
+                if (item.type === AST_NODE_TYPE_OPERATOR) {
+                    continue;
+                }
+
+                if (item.type === AST_NODE_TYPE_IDENTIFIER) {
+                    var func = find_function_in_scope(currentScope, item.identifier)
+                    if (func != null) {
+                        // TODO(jwwishart) need to test against the return type of the funcction! :os
+                    }
+
+                    var variable = find_variable_in_scope(currentScope, item.identifier);
+                    if (variable != null) {
+                        try_set_type(variable.data_type);
+                    }
+                }
+
+                if (item.type === AST_NODE_TYPE_LITERAL) {
+                    try_set_type(item.data_type);
+                }
+            }
+
+
+            if (type === null) {
+                throw new Error("The type determination code is not that great yet :o( - in determine_type()");
+            }
+
+            return type;
         }
 
         var funcCall = ast_create_function_call({
@@ -835,15 +951,14 @@ var erg;
             var param_type = funcDecl.parameters[i].data_type;
             // TODO(jwwishart) what if data_type of FIRST part is any
             // TODO(jwwishart) what if data_type of parts is different: first is string, next a number etc.
-            var argument_type = funcCall.arguments.parts && funcCall.arguments.parts.length > 0 ? funcCall.arguments.parts[0].data_type : 'unknown-data-type';
-
             var arg = get_argument_n(funcCall.arguments.parts, parseInt(i, 10));
+            var argument_type = null;
 
             // Argument not provided        
-            if (arg == null && funcCall.arguments.parts) {
+            if (arg.length === 0 && funcCall.arguments.parts) {
                 throw new Error("Call to function: '" + funcCall.identifier + "' was not provided argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but an argument was not provided: " + JSON.stringify(parser.peek()));
-            } else if (arg != null) {
-                argument_type = arg.data_type;
+            } else if (arg.length > 0) {
+                argument_type = determine_type(arg);
             }
 
             if (param_type === 'any') {
@@ -887,6 +1002,12 @@ var erg;
 
             statement.rhs.parts.push(ast_create_literal("asm", parser.peek().text));
             currentScope.statements.push(statement)
+        }
+
+        if (accept(parser.peek(), TOKEN_TYPE_DIRECTIVE)) {
+            if (parser.peek().text === 'filename') {
+                throw new Error("Cannot use #filename directive at statement level as it renders out a string" + JSON.stringify(parser.peek()));
+            }
         }
 
         // Declarations
@@ -1015,6 +1136,11 @@ var erg;
             if (statement.type === AST_NODE_TYPE_FUNCTION_CALL) {
                 statement.arguments.parts.push(part);
             } else if (statement.type === AST_NODE_TYPE_VARIABLE_DECLARATION) {
+                // TODO(jwwishart) this only takes into account the FIRST item we
+                // push or the last one pushed if multiple pushed... we need to check
+                // they are all the same or are cast to the same type and then that
+                // they match the type of the declaration if it is explicitly typed!
+                statement.data_type = part.data_type;
                 statement.rhs.parts.push(part);
             } else if (statement.type === AST_NODE_TYPE_VARIABLE_ASSIGNMENT) {
                 statement.rhs.parts.push(part);
@@ -1030,6 +1156,16 @@ var erg;
                 add_expression_part(statement, ast_create_literal('null', 'null'));
 
                 initialized = true;
+                parser.eat();
+                continue;
+            }
+
+            if (accept(parser.peek(), TOKEN_TYPE_DIRECTIVE)) {
+                if (parser.peek().text === 'filename') {
+                    add_expression_part(statement, ast_create_literal('string', parser.peek().filename));
+                }
+
+                //initialized = true;
                 parser.eat();
                 continue;
             }
@@ -1450,6 +1586,10 @@ var erg;
             result.push(prefix + '}();'); // TODO(jwwishart) node etc?
         }
 
+        // if (ast.type === AST_NODE_TYPE_DIRECTIVE) {
+
+        // }
+
         if (ast.type === AST_NODE_TYPE_FUNCTION_SCOPE) {
             for (var si in ast.statements) {
                 result = result.concat(process_ast_node(ast.statements[si], scope));
@@ -1581,14 +1721,14 @@ var erg;
     // @Compiler ------------------------------------------------------------------
     //
 
-    erg.compile = function compile(code, debug) {
+    erg.compile = function compile(filename, code, debug) {
         if (debug) {
             console.log(code);
             console.log(code.length);
         }
 
         var results = '';
-        var scanner = erg.createScanner(code);
+        var scanner = erg.createScanner(filename, code);
         var lexer = erg.createTokenizer(scanner, true);
         var t;
         var tokens = [];
