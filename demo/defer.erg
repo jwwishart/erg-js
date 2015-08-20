@@ -1,0 +1,40 @@
+
+// This test puts a message at the start of this function
+// and at the end in two sequential statements!
+print("\nThe start of defer.erg\n");
+defer print("The end of defer.erg");
+
+
+something :: () {
+    print("something() start ---------");
+    print("one");
+    print("two");
+    print("three");
+
+    print("something() end   ---------");
+}
+
+something_with_mixed_calls :: () {
+    print("something_with_mixed_calls() start ---------");
+    
+    defer print("one");
+    print("two");
+    defer print("three");
+
+    print("something_with_mixed_calls() end ---------");
+}
+
+something_with_defer :: () {
+    print("something_with_defer() start ---------");
+    
+    defer print("one");
+    defer print("two");
+    defer print("three");
+
+    print("something_with_defer() end   ---------");
+}
+
+
+something(); print("\n");
+something_with_mixed_calls(); print("\n");
+something_with_defer(); print("\n");

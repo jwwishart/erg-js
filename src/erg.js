@@ -129,7 +129,8 @@ var erg;
         'TOKEN_TYPE_ASSIGNMENT',
         'TOKEN_TYPE_UNINITIALIZE_OPERATOR',
         'TOKEN_TYPE_ASM_BLOCK',
-        'TOKEN_TYPE_DIRECTIVE'
+        'TOKEN_TYPE_DIRECTIVE',
+        'TOKEN_TYPE_KEYWORD_DEFER'
     ]);
 
     erg.createTokenizer = function(scanner) {
@@ -242,6 +243,10 @@ var erg;
                 if (depth === 0 && foundStart) break;
 
                 if (c === "{") {
+                    if (foundStart === true) {
+                        result += c;
+                    }
+
                     foundStart = true;
                     depth++;
                     eat(); // Skip adding the opening {
@@ -250,6 +255,11 @@ var erg;
 
                 if (c === "}" && foundStart) {
                     depth--;
+
+                    if (depth !== 0) {
+                        result += c;
+                    }
+
                     eat(); // Skip adding the closing }
                     continue; 
                 }
@@ -533,13 +543,19 @@ var erg;
                         token = create_token(TOKEN_TYPE_IDENTIFIER, '');
                         token.text = get_identifier();
 
-                        // Special keyword
+                        // KEYWORDS
+                        //
+
                         if (token.text === "asm") {
                             token = create_token(TOKEN_TYPE_ASM_BLOCK, '')
 
                             // Parse asm block!
                             var asm = get_asm_block();
                             token.text = asm;
+                        }
+
+                        if (token.text === "defer") {
+                            token = create_token(TOKEN_TYPE_KEYWORD_DEFER, 'defer');
                         }
 
                         return token;
@@ -969,7 +985,11 @@ var erg;
             }
         }
 
-        currentScope.statements.push(funcCall);
+        if (currentScope.is_parsing_defer) {
+            currentScope.deferreds.push(funcCall)
+        } else {
+            currentScope.statements.push(funcCall);
+        }
     }
 
     function determine_datatype_from_expression(parts) {
@@ -992,6 +1012,10 @@ var erg;
 
 
     function parse_statement(currentScope, parser) {
+
+        // asm Block
+        //
+
         if (accept(parser.peek(), TOKEN_TYPE_ASM_BLOCK)) {
             var statement = ast_create_statement({
                 type: AST_NODE_TYPE_ASM,
@@ -1000,14 +1024,41 @@ var erg;
                 }
             });
 
+
             statement.rhs.parts.push(ast_create_literal("asm", parser.peek().text));
-            currentScope.statements.push(statement)
+
+            if (currentScope.is_parsing_defer) {
+                currentScope.deferreds.push(statement);
+            } else {
+                currentScope.statements.push(statement);
+            }
         }
+
+        // filename directive
+        //
 
         if (accept(parser.peek(), TOKEN_TYPE_DIRECTIVE)) {
             if (parser.peek().text === 'filename') {
                 throw new Error("Cannot use #filename directive at statement level as it renders out a string" + JSON.stringify(parser.peek()));
             }
+        }
+
+        // defer
+        //
+
+        if (accept(parser.peek(), TOKEN_TYPE_KEYWORD_DEFER)) {
+            parser.eat();
+
+            currentScope.is_parsing_defer = true;
+
+            // TODO(jwwishart) it doesn't make sense to declare... 
+            // variables... and various other things but really
+            // you probably should be able to do that... regardless,
+            // and they need to be implemented... only function calls
+            // and assignment are supported... currently
+            parse_statement(currentScope, parser);
+
+            currentScope.is_parsing_defer = false;
         }
 
         // Declarations
@@ -1089,7 +1140,11 @@ var erg;
 
                     statement.lhs.is_initialized = true; // If it wasn't it is NOW!
 
-                    currentScope.statements.push(statement);
+                    if (currentScope.is_parsing_defer) {
+                        currentScope.deferreds.push(statement);
+                    } else {
+                        currentScope.statements.push(statement);
+                    }
                 }
 
                 // Function Call
@@ -1409,9 +1464,12 @@ var erg;
         return ast_create_node(type || AST_NODE_TYPE_SCOPE, {
             parameters: [],
             statements: [],
+            deferreds: [],
 
             parent: parentScope,
-            scopeDepth: ast_count_scope_depth(parentScope) + 1
+            scopeDepth: ast_count_scope_depth(parentScope) + 1,
+
+            is_parsing_defer: false
         });
     }
 
@@ -1566,33 +1624,55 @@ var erg;
             tmpScope = tmpScope.parent;
         }
 
-        if (ast.type === AST_NODE_TYPE_PROGRAM) {
-            result.push(';(function(global){');
-
-            for (var psi in ast.statements) {
-                result = result.concat(process_ast_node(ast.statements[psi], scope));
+        if (ast.type === AST_NODE_TYPE_SCOPE || ast.type === AST_NODE_TYPE_PROGRAM) {
+            if (ast.type === AST_NODE_TYPE_PROGRAM) {
+                result.push(';(function(global){');
+            } else {
+                result.push(prefix + '(function(){');
             }
 
-            result.push('}(this));'); // TODO(jwwishart) node etc?
-        }
-
-        if (ast.type === AST_NODE_TYPE_SCOPE) {
-            result.push(prefix + '(function(){');
+            if (ast.deferreds && ast.deferreds.length > 0) {
+                result.push(prefix + "try {");
+            }
 
             for (var si in ast.statements) {
                 result.push(process_ast_node(ast.statements[si], scope).join('\n'));
             }
 
-            result.push(prefix + '}();'); // TODO(jwwishart) node etc?
+            if (ast.deferreds && ast.deferreds.length > 0) {
+                result.push(prefix + "} finally {");
+
+                for(var dsi = ast.deferreds.length - 1; dsi >= 0; dsi--) {
+                    result.push(prefix + process_ast_node(ast.deferreds[dsi], scope).join('\n'));
+                }        
+
+                result.push(prefix + "}");
+            }
+
+            if (ast.type === AST_NODE_TYPE_PROGRAM) {
+                result.push('}(this));'); // TODO(jwwishart) node etc?
+            } else {
+                result.push(prefix + '}();'); // TODO(jwwishart) node etc?
+            }
         }
 
-        // if (ast.type === AST_NODE_TYPE_DIRECTIVE) {
-
-        // }
-
         if (ast.type === AST_NODE_TYPE_FUNCTION_SCOPE) {
+            if (ast.deferreds && ast.deferreds.length > 0) {
+                result.push(prefix + "try {");
+            }
+
             for (var si in ast.statements) {
                 result = result.concat(process_ast_node(ast.statements[si], scope));
+            }
+
+            if (ast.deferreds && ast.deferreds.length > 0) {
+                result.push(prefix + "} finally {");
+
+                for(var dsi = ast.deferreds.length - 1; dsi >= 0; dsi--) {
+                    result.push(prefix + process_ast_node(ast.deferreds[dsi], scope).join('\n'));
+                }
+
+                result.push(prefix + "}");
             }
         }
 
