@@ -1,3 +1,4 @@
+// Generated: 2015-8-22 14:26
 ;(function(global){
   var type_string = "";
   var type_int = 0;

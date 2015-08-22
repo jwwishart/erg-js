@@ -1,4 +1,32 @@
-    
+/*
+    Notes:
+
+    - I've realized that it is in a way important to send a context
+      throughout the whole pipeline.
+    - The tokens should probably be attached to the ast nodes also
+    - The ast-nodes construction should probably be:
+        - Determine path
+        - call construciton function to do everything else
+          and then assigne it where needed back in caller as 
+          the caller likely knows more about the context... I think
+          this is a good way anyway...
+
+    - JavaScript construction depth needs the context object for
+      depth so that other routines can know how deep things should
+      be rendered
+        - really need all whitespace tokens to correctly translate
+          with spaces between statements the user provided, but that
+          addds complexity.
+    - 
+
+
+    TODO:
+    - Performance generally... I've doing things easily, not 
+      in the fastest manner.
+*/
+
+
+
 var __global = this;
 var erg;
 
@@ -540,10 +568,15 @@ var erg;
                     }
 
                     if (/[a-zA-Z]/gi.test(c)) {
+                        // Identifier...
+                        //
+
                         token = create_token(TOKEN_TYPE_IDENTIFIER, '');
                         token.text = get_identifier();
+                        
+                        // ... but it maybe a ...
 
-                        // KEYWORDS
+                        // KEYWORD
                         //
 
                         if (token.text === "asm") {
@@ -556,6 +589,10 @@ var erg;
 
                         if (token.text === "defer") {
                             token = create_token(TOKEN_TYPE_KEYWORD_DEFER, 'defer');
+                        }
+
+                        if (token.text === "return") {
+                            token = create_token(TOKEN_TYPE_KEYWORD_RETURN, 'return');
                         }
 
                         return token;
@@ -960,30 +997,33 @@ var erg;
         // Args
         //
 
-        parse_function_arguments(currentScope, parser, funcCall, funcDecl);
+        if(parser.peek().type !== TOKEN_TYPE_PAREN_CLOSE) {
+            parse_function_arguments(currentScope, parser, funcCall, funcDecl);
 
-        // Validate Argument Types against parameter types
-        for (var i in funcDecl.parameters) {
-            var param_type = funcDecl.parameters[i].data_type;
-            // TODO(jwwishart) what if data_type of FIRST part is any
-            // TODO(jwwishart) what if data_type of parts is different: first is string, next a number etc.
-            var arg = get_argument_n(funcCall.arguments.parts, parseInt(i, 10));
-            var argument_type = null;
+            // Validate Argument Types against parameter types
+            for (var i in funcDecl.parameters) {
+                var param_type = funcDecl.parameters[i].data_type;
+                // TODO(jwwishart) what if data_type of FIRST part is any
+                // TODO(jwwishart) what if data_type of parts is different: first is string, next a number etc.
+                var arg = get_argument_n(funcCall.arguments.parts, parseInt(i, 10));
+                var argument_type = null;
 
-            // Argument not provided        
-            if (arg.length === 0 && funcCall.arguments.parts) {
-                throw new Error("Call to function: '" + funcCall.identifier + "' was not provided argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but an argument was not provided: " + JSON.stringify(parser.peek()));
-            } else if (arg.length > 0) {
-                argument_type = determine_type(arg);
-            }
+                // Argument not provided        
+                if (arg.length === 0 && funcCall.arguments.parts) {
+                    throw new Error("Call to function: '" + funcCall.identifier + "' was not provided argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but an argument was not provided: " + JSON.stringify(parser.peek()));
+                } else if (arg.length > 0) {
+                    argument_type = determine_type(arg);
+                }
 
-            if (param_type === 'any') {
-            } else {
-                if (param_type !== argument_type) {
-                    throw new Error("Call to function: '" + funcCall.identifier + "' provides incorrect type for argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but got a '" + argument_type + "'" + JSON.stringify(parser.peek()));
+                if (param_type === 'any') {
+                } else {
+                    if (param_type !== argument_type) {
+                        throw new Error("Call to function: '" + funcCall.identifier + "' provides incorrect type for argument " + (parseInt(i, 10) + 1) + " (Parameter Name: " + funcDecl.parameters[i].name + ") - Expected: '" + param_type + "' but got a '" + argument_type + "'" + JSON.stringify(parser.peek()));
+                    }
                 }
             }
         }
+
 
         if (currentScope.is_parsing_defer) {
             currentScope.deferreds.push(funcCall)
@@ -1060,6 +1100,25 @@ var erg;
 
             currentScope.is_parsing_defer = false;
         }
+
+
+        // return
+        // 
+
+        if (accept(parser.peek(), TOKEN_TYPE_KEYWORD_RETURN)) {
+            parser.eat();
+
+            var statement = ast_create_statement({
+                type: AST_NODE_TYPE_RETURN_STATEMENT,
+                lhs: null,
+                rhs: ast_create_expression()
+            });
+
+            parse_expression(currentScope, parser, statement);
+            currentScope.statements.push(statement);
+
+        }
+
 
         // Declarations
         //
@@ -1197,7 +1256,9 @@ var erg;
                 // they match the type of the declaration if it is explicitly typed!
                 statement.data_type = part.data_type;
                 statement.rhs.parts.push(part);
-            } else if (statement.type === AST_NODE_TYPE_VARIABLE_ASSIGNMENT) {
+            } else if (statement.type === AST_NODE_TYPE_VARIABLE_ASSIGNMENT ||
+                       statement.type === AST_NODE_TYPE_RETURN_STATEMENT)
+            {
                 statement.rhs.parts.push(part);
             } else {
                 throw new Error("Can't add  part to unknown statement type: " + JSON.stringify(statement) + " ::: " + JSON.stringify(parser.peek()))
@@ -1238,21 +1299,55 @@ var erg;
 
             // Identifier
             if (accept(parser.peek(), TOKEN_TYPE_IDENTIFIER)) {
-                add_expression_part(statement, ast_create_identifier(parser.peek().text));
+                var identifier = parser.peek().text;
+
+                add_expression_part(statement, ast_create_identifier(identifier));
 
                 // Check that the identifier is initialized
                 // We just need to check at the current point whether
                 // it is initialized... (I hope!)
-                var var_ident = find_variable_in_scope(currentScope, parser.peek().text);
-                if (var_ident && var_ident.lhs && var_ident.lhs.is_explicitly_uninitialized === true && var_ident.lhs.is_initialized === false) {
+                var var_ident = find_variable_in_scope(currentScope,  identifier);
+                var func_ident = find_function_in_scope(currentScope, identifier);
+
+                if (var_ident && 
+                    var_ident.lhs && 
+                    var_ident.lhs.is_explicitly_uninitialized === true && 
+                    var_ident.lhs.is_initialized === false)
+                {
                     console.info("Use of uninitialied variable " + parser.peek().text + " before initialization. " + JSON.stringify(statement));
                 }
+
+
+                if (func_ident && 
+                    func_ident.lhs)
+                {
+                    console.info("Use of uninitialied variable " + parser.peek().text + " before initialization. " + JSON.stringify(statement));
+                }
+
+                parser.eat(); // identifier
 
                 // Function Identifier
                 // TODO(jwwishart) argument might be a function...
 
                 initialized = true;
-                parser.eat();
+
+                // Function Call that returns something
+                //
+
+                if (func_ident && accept(parser.peek(), TOKEN_TYPE_PAREN_OPEN)) {
+                    parser.eat(); // eat (
+
+                    // TODO(jwwishart) make sure we validate that the function
+                    // returns something and has a valid return type for what we 
+                    // are assigning to...
+                    parse_function_execution(currentScope, parser, identifier);
+
+                    // @HACK the statement was added to the scope.. remove and
+                    // assign to RHS of statement above
+                    // This WONT suit multiple rhs expression parts! :
+                    statement.rhs.parts[0] = currentScope.statements.splice(currentScope.statements.length - 1, 1)[0];
+                }
+
                 continue;
             }
 
@@ -1299,6 +1394,8 @@ var erg;
                     continue;
                 }
             }
+
+
 
             // TODO(jwwishart) we should not get here... we have something
             // we don't support... should probably throw?
@@ -1421,6 +1518,7 @@ var erg;
         'AST_NODE_TYPE_VARIABLE_DECLARATION',
         'AST_NODE_TYPE_VARIABLE_ASSIGNMENT',
         'AST_NODE_TYPE_ASM',
+        'AST_NODE_TYPE_RETURN_STATEMENT'
     ]);
 
 
@@ -1624,8 +1722,15 @@ var erg;
             tmpScope = tmpScope.parent;
         }
 
+        function get_date() {
+            var date = new Date();
+
+            return date.getFullYear() + "-" + (date.getMonth() + 1) + "-" +  date.getDate() + " " + date.getHours() + ":" + date.getMinutes();
+        }
+
         if (ast.type === AST_NODE_TYPE_SCOPE || ast.type === AST_NODE_TYPE_PROGRAM) {
             if (ast.type === AST_NODE_TYPE_PROGRAM) {
+                result.push('// Generated: ' + get_date());
                 result.push(';(function(global){');
             } else {
                 result.push(prefix + '(function(){');
@@ -1642,7 +1747,7 @@ var erg;
             if (ast.deferreds && ast.deferreds.length > 0) {
                 result.push(prefix + "} finally {");
 
-                for(var dsi = ast.deferreds.length - 1; dsi >= 0; dsi--) {
+                for (var dsi = ast.deferreds.length - 1; dsi >= 0; dsi--) {
                     result.push(prefix + process_ast_node(ast.deferreds[dsi], scope).join('\n'));
                 }        
 
@@ -1695,6 +1800,10 @@ var erg;
 
         if (ast.type === AST_NODE_TYPE_VARIABLE_ASSIGNMENT) {
             result.push(prefix + ast.lhs.identifier + ' = ' + process_ast_node(ast.rhs, scope) + ';');
+        }
+
+        if (ast.type === AST_NODE_TYPE_RETURN_STATEMENT) {
+            result.push(prefix + 'return ' + process_ast_node(ast.rhs, scope) + ';');
         }
 
         if (ast.type === AST_NODE_TYPE_EXPRESSION) {

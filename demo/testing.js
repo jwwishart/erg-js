@@ -13,6 +13,7 @@ console.log(str.toUpperCase());
   function dump_code_file(filename) {
     try {
     console.log("\n\nSTART OF " + "testing.erg" + " contents");
+    var content = "";
 
 // RAW ASM OUTPUT START (javascript -------------------------
 
@@ -31,16 +32,22 @@ console.log(str.toUpperCase());
             return fs.readFileSync(path, { encoding: 'utf-8' });
         }
 
-        var contents = get_file_contents(filename);
+        contents = get_file_contents(filename);
 
         console.log(contents);
 
 // RAW ASM OUTPUT END (javascript) --------------------------
 
+    return content;
     } finally {
         console.log("\n\nEND OF " + "testing.erg" + " contents");
     }
   }
+  function return_test() {
+    return "Hello World";
+  }
+  var return_test_result =   return_test();;
+  console.log(return_test_result);
   print_uppercase("Compiling File: " + "testing.erg");
   var prefix1 = "Prefix 1: ";
   var prefix2 = "Prefix 2: ";
