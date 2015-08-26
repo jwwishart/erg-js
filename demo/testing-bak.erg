@@ -42,12 +42,22 @@ dump_code_file :: (filename : string) {
     return content;
 }
 
-// @BUG these two statements hit the "The type determination code is not that great" error for the following two items :o(
-//print(dump_code_file(#filename));
-//defer print(dump_code_file(#filename));
 
-result_of_dump_code_file : string = dump_code_file(#filename);
-print(result_of_dump_code_file);
+
+
+return_test :: () {
+    return "Hello World";
+}
+
+// @BUG following two don't work :o(
+// print(return_test());
+//defer print(return_test());
+
+return_test_result : string = return_test();
+print(return_test_result);
+
+
+
 
 // Try calling with literal and directive
 print_uppercase("Compiling File: " + #filename);

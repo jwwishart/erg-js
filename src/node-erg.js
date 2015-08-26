@@ -5,7 +5,7 @@ var path = require('path');
 var erg = require('../src/erg.js');
 var dir = __dirname;
 
-console.log('ergjs | (C) 2015 Justin Wishart - Version 0.0.1\n');
+console.log('ergjs | (C) 2015 Justin Wishart - Version 0.0.2\n');
 
 
 function getFileContents(path) {
