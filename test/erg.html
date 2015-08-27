@@ -145,7 +145,16 @@ my_print(12);
             function exec() {
                 var code = document.getElementById('code').value;
                 var output = document.getElementById('output');
-                output.textContent = erg.compile('erg.html', code, true);
+                output.textContent = 
+                erg.compile({ 
+                    'erg.html': code 
+                },{
+                    logger: {
+                        log: function(group, message) {
+                            console.log(group.toUpperCase() + " found '" + message + "' (" + message.charCodeAt(0) + ")");
+                        }
+                    }
+                });
 
                 console.log("OUTPUT START -------");
                 eval(output.textContent);
