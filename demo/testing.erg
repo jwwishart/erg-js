@@ -2,4 +2,4 @@
 num := 15;
 _num := 16;
 num2 : int = 17;
-num2 : const int = 18;
+num_const : const int = 18;
