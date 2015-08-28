@@ -151,7 +151,11 @@ my_print(12);
                 },{
                     logger: {
                         log: function(group, message) {
-                            console.log(group.toUpperCase() + " found '" + message + "' (" + message.charCodeAt(0) + ")");
+                            if ($.type(message) === 'string') {
+                                console.info(group + " | " + message);
+                            } else {
+                                console.info(group, message);
+                            }
                         }
                     }
                 });

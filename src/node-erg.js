@@ -25,12 +25,16 @@ if (process.argv.length > 2) {
         path: process.argv[2],
         contents: getFileContents(process.argv[2])
     });
+
+    console.log(JSON.stringify(toCompile));
 }
 
 if (toCompile.length > 0) {
     var filename = path.basename(toCompile[0].path, '.erg');
 
-    var output = erg.compile(filename + '.erg', toCompile[0].contents, true);
+    var input_filename = '.erg';
+
+    var output = erg.compile({input_filename: toCompile[0].contents});
     var newFilename =  filename + '.js';
     
     writeJavaScript(newFilename, output);

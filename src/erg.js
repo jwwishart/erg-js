@@ -107,8 +107,15 @@ var erg;
     var CompilerContext = function(program, files, options) {
         this.program = program;
         this.files = files;
-        this.options = options;
-        this.logger = options.logger;
+        // {
+        //      target: 'es6' // allows const etc.
+        // }
+        this.options = {
+            target: 'es5'
+        };
+
+
+        this.logger = options && options.logger;
 
         this.current_filename = '';
         this.current_code = '';
@@ -148,7 +155,7 @@ var erg;
 
         // TODO(jwwishart) in debug dump this ast.
         var program = new Program();
-        var context = new erg.CompilerContext(program, '', options);
+        var context = new erg.CompilerContext(program, files, options);
 
         each(files, function(code, filename) {
             // Set current file information to context
@@ -158,9 +165,10 @@ var erg;
             // Process the file!
             var scanner = erg.scan(context);
             var tokenizer = erg.tokenize(context, scanner);
-            var ast = erg.parse(context, tokenizer);
+            
+            erg.parse(context, tokenizer);
 
-            result += erg.target(context, ast) + "\n\n\n";
+            result += erg.target(context) + "\n\n\n";
         });
 
         return result;
@@ -170,10 +178,11 @@ var erg;
     // @Scanner ---------------------------------------------------------------
     //
 
-    var Lexeme = function(filename, line_no, col_no) {
+    var Lexeme = function(filename, line_no, col_no, char) {
         this.filename = filename;
         this.line_no = line_no;
         this.col_no = col_no;
+        this.text = char;
     };
 
     erg.Lexeme = Lexeme;
@@ -198,7 +207,7 @@ var erg;
                 return null;
             },
             eat: function() {
-                context.log("SCANNER", ": " + code[i]);
+                context.log("SCANNER", code[i] + " - " + JSON.stringify(this.peek()));
 
                 // NOTE: Do the line and char stuff when you eat, not 
                 // before!
@@ -212,7 +221,7 @@ var erg;
             },
             get_lexeme: function() {
                 return new Lexeme(filename, line_no, col_no, this.peek());
-            },
+            }
         };
     };
 
@@ -267,7 +276,7 @@ var erg;
         this.typeName = get_global_constant_name('TOKEN_TYPES', type);
         this.lexeme = lexeme;
         this.text = lexeme.text;
-    }
+    };
 
     erg.Token = Token;
 
@@ -304,7 +313,7 @@ var erg;
             return scanner.peek();
         }
 
-        function eat() {
+        function eat() {            
             scanner.eat();
         }
 
@@ -556,8 +565,6 @@ var erg;
                     return token;
                 }
 
-                token = create_token(TOKEN_TYPE_UNKNOWN, '');
-
                 while ((c = peek()) !== null) {
                     // Get Mappable Char to Tokens
                     var to_return = try_map_char_to_token(c);
@@ -670,7 +677,7 @@ var erg;
                         return token;
                     }
 
-                    if (/[a-zA-Z]/gi.test(c)) {
+                    if (/[a-zA-Z_]/gi.test(c)) {
                         // Identifier...
                         //
 
@@ -701,7 +708,7 @@ var erg;
                         return token;
                     }
 
-                    var error_char_info = scanner.get_position_info();
+                    var error_char_info = scanner.get_lexeme();
 
                     throw new Error("ERROR: Unexpected character '" + c + "' (ASCII: ' + c.charCodeAt(0) + ') (ln: " + error_char_info.line_no + ", col: " + error_char_info.col_no +")");
                 }
@@ -710,6 +717,7 @@ var erg;
             },
 
             eat: function() {
+                context.log("TOKENIZERE", JSON.stringify(token));
                 token = null;
             }
         };
@@ -750,8 +758,8 @@ var erg;
             if (is_array(token_type)) {
                 var found = false;
 
-                each(token_type, function() {
-                    if (peek().type === this) {
+                each(token_type, function(val) {
+                    if (peek().type === val) {
                         found = true;
                         return false;
                     }
@@ -776,8 +784,8 @@ var erg;
             if (is_array(token_type)) {
                 var found_match = false;
 
-                each(token_type, function() {
-                    if (peek().type === this) {
+                each(token_type, function(val) {
+                    if (peek().type === val) {
                         found = true;
                         return false;
                     }
@@ -791,7 +799,25 @@ var erg;
                 if (peek().type !== token_type) {
                     throw new Error('Unexpected Token ' + peek().type + ' (' + get_global_constant_name('TOKEN_TYPES', peek().type) + ') was expecting ' + token_type + ' (' + get_global_constant_name('TOKEN_TYPES', token_type) + ') Token Info: ' + JSON.stringify(peek()));
                 }
-            }            
+            }
+
+            return true;
+        }
+
+        function add_statement(context, current_scope, statement) {
+            current_scope.statements.push(statement);
+
+            // TODO(jwwishart) add variable and func identifiers...
+            if (statement instanceof VariableDeclaration) {
+                current_scope.identifiers.push(statement);
+
+                context.program.symbol_info.push(new SymbolInformation(
+                    statement.identifier,
+                    statement,
+                    current_scope));
+            }
+
+            // TODO(jwwishart) if type decl then add to types on the scope!
         }
 
         /// Parses tokens and constructs an ast on the program
@@ -822,12 +848,12 @@ var erg;
             // Parse File
             //
 
-            var scope = file.scope;
+            var scope = file;
 
             iterate(function() {
                 parse_scope(scope);
             });
-        }
+        };
 
         function parse_scope(current_scope) {
             while (peek() != null) {
@@ -846,6 +872,7 @@ var erg;
 
                 // Statements
                 parse_statement(current_scope);
+                context.log("PARSER", JSON.stringify(current_scope.statements[current_scope.statements.length - 1]));
             }
         }
 
@@ -853,7 +880,7 @@ var erg;
             if (accept(TOKEN_TYPE_IDENTIFIER)) {
                 (function() {
                     var token = peek();
-                    var identifier = token.lexeme.text;
+                    var identifier = token.text;
 
                     eat(); // identifier
 
@@ -862,47 +889,60 @@ var erg;
 
                     if (accept([TOKEN_TYPE_SINGLE_COLON, TOKEN_TYPE_COLON_EQUALS])) {
                         (function() {
-                            var variableDecl = new VariableDeclaration(identifier);
+                            var variable_decl = new VariableDeclaration(identifier);
                             var data_type_name = 'any';
+                            var is_assignment = false;
 
-                            //variableDecl.tokens.push(token);
-                            //variableDecl.tokens.push(peek());
+                            //variable_decl.tokens.push(token);
+                            //variable_decl.tokens.push(peek());
 
 
                             // Type declared or inferred
                             //
 
                             if (accept(TOKEN_TYPE_COLON_EQUALS)) {
-                                eat();
+                                is_assignment = true;
+                                eat(); // :=
                             } else if (accept(TOKEN_TYPE_SINGLE_COLON)) {
                                 eat(); // :
 
                                 // data_type?
                                 if (expect(TOKEN_TYPE_IDENTIFIER)) {
-                                    data_type_name = peek().lexeme.text;
+                                    data_type_name = peek().text;
 
-                                    eat();
+                                    eat(); // identifier
 
                                     // TODO(jwwishart) does the type exist. Add to scope and program, mark as unknown type
+
+                                    if (accept(TOKEN_TYPE_ASSIGNMENT)) {
+                                        is_assignment = true;
+                                        eat(); // =
+                                    }
                                 }
                             }
 
-                            
+                            if (is_assignment) {
 
- 
+                            }
 
+                            // TODO(jwwishart) 'const' might need to be assigned to variable_type
+                            variable_decl.data_type = data_type_name;
+                            add_statement(context, current_scope, variable_decl);
                         }());
                     }
                     
                 }());
             }
+
+            // TODO(jwwishart) error here... if we get here
+            // we are not supporting some form of statement...
+            eat();
         }
 
         function parse_variable_declaration(current_scope) {
             if (accept(TOKEN_TYPE_SINGLE_COLON)) {
             }
         }
-
 
     }());
 
@@ -914,10 +954,41 @@ var erg;
         this.tokens = [];
     }
 
+    function Scope(parent) {
+        this.parent = parent; // only need to go UP the scope, not down...
+        
+        this.statements = [];
+        this.deferred = [];
+
+        this.types = [];        // enum, structs (built in types if on program)
+        this.identifiers = [];  // function and variable
+    }
+    Scope.prototype = new AstNode();
+
+
+
+    // Symbol information attached to program for ALL types
+    // which contains the identifier for the symbol, the declaration
+    // which might be a function decl,
+    // identifier = the variable/function/type name
+    // decl       = the declaration object (variable decl, function decl,
+    //              type decl.
+    // scope      = the scope containing the decl.
+    function SymbolInformation(identifier, decl, scope) {
+        this.identifier  = identifier;
+        this.declaration = decl;
+        this.scope       = scope;
+
+        // true ONLY WHEN all type information is resolved
+        // when all symbol information objects in
+        // the Program.symbol_info array are is_resolved == true
+        // then we are done type inference!
+        this.is_resolved = false;
+    }
+    SymbolInformation.prototype = new AstNode();
+
 
     function Program() {
-        'use strict';
-
         if (this === undefined) {
             throw new Error("Program not called as a constructor");
         }
@@ -928,8 +999,11 @@ var erg;
             new DataType('any',     null,   true),
             new DataType('string',  '',     true),
             new DataType('int',     0,      true),
-            new DataType('float',   0.0,    true),
+            new DataType('float',   0.0,    true)
         ];
+
+        // Contains all symbols in the program
+        this.symbol_info = [];
     }
     Program.prototype = new AstNode();
 
@@ -945,15 +1019,7 @@ var erg;
     File.prototype = new Scope();
 
 
-    function Scope(parent) {
-        this.parent = parent; // only need to go UP the scope, not down...
-        
-        this.statements = [];
-        this.deferred = [];
-
-        this.types = [];
-    }
-    Scope.prototype = new AstNode();
+    
 
 
     ///
@@ -966,6 +1032,7 @@ var erg;
         this.variable_type = variable_type || 'variable'; // variable or constant
         this.data_type = data_type || 'any';
         this.init = init || [];
+        this.is_exported = identifier[0] !== '_';
     }
     VariableDeclaration.prototype = new AstNode();
 
@@ -986,6 +1053,122 @@ var erg;
     }
 
 
+
+    // @Target ----------------------------------------------------------------
+    //
+
+    (function() {
+        var context = null;
+
+        erg.target = function(context_arg) {
+            context = context_arg;
+
+            context.log("TARGET", context.program);
+            context.log("TARGET", context.program.files[0]);
+
+            return process_ast(context.program).join('\n');
+        };
+
+
+        // Helpers
+        //
+
+
+        function determine_prefix(current_scope) {
+            var prefix = '  ';
+            var tmpScope = current_scope;
+
+            // 
+            while(tmpScope !== undefined) {
+                prefix += '  ';
+                tmpScope = tmpScope.parent;
+            }
+
+            return prefix;
+        }
+
+        function get_date() {
+            var date = new Date();
+
+            return date.getFullYear() + "-" + (date.getMonth() + 1) + "-" +  date.getDate() + " " + date.getHours() + ":" + date.getMinutes();
+        }
+
+
+        function process_onto_results(items, result) {
+            each(items, function(item, i) {
+                each(process_ast(item), function(res) {
+                    result.push(res);
+                });
+            });
+        }
+
+        // Process Functions
+        //
+
+        // WARNING: assume here that all type information is allll goood! we should have
+        // handled that during parsing or type inference or something else!
+        function process_ast(node) {
+            var result = [];
+
+            var prefix = determine_prefix(node);
+
+            // Program
+            //
+
+            if (node instanceof Program) {
+                result.push('// Generated: ' + get_date());
+
+                // Process Files
+                process_onto_results(node.files, result);
+
+                return result;
+            }
+
+            // File
+            //
+
+            if (node instanceof File) {
+                result.push('// File Start: ' + node.filename);
+
+                process_onto_results(node.statements, result);
+
+                result.push('// File End: ' + node.filename);
+                return result;
+            }
+
+
+            // TODO(jwwishart) block statements need to be processed...
+            //     BEFORE we do standard Scope objects!
+
+
+            // Scope
+            //
+
+            if (node instanceof Scope) {
+                result.push("\n;(function() {");
+
+                // TODO(jwwishart) parse statements...
+
+                result.push("}());\n");
+                return result;
+            }
+
+
+            // VariableDeclaration
+            if (node instanceof VariableDeclaration) {
+                (function() {
+                    result.push(prefix + 'var ' + node.identifier + ' = null;');
+                    
+                }());
+            }
+
+            return result;
+        }
+
+
+
+
+    }());
 
 
 }(this));
