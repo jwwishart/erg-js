@@ -30,6 +30,10 @@ var erg;
         return toString.call(it) === ARRAY_TYPE_STRING;
     };
 
+    var is_string = function(value) {
+        return Object.prototype.toString.call(value) === '[object String]';
+    };
+
     // KUDOS: is.js
     var is_object = function(it) {
         var type = typeof it;
@@ -887,11 +891,15 @@ var erg;
                     // Variable Declaration (with or without type)
                     //
 
+                    // TODO(jwwishart) put this into a function...
+                    // TODO(jwwishart) put other situations into separate helper functions...
+
                     if (accept([TOKEN_TYPE_SINGLE_COLON, TOKEN_TYPE_COLON_EQUALS])) {
                         (function() {
                             var variable_decl = new VariableDeclaration(identifier);
                             var data_type_name = 'any';
                             var is_assignment = false;
+                            var is_explicitly_uninitialized = false;
 
                             //variable_decl.tokens.push(token);
                             //variable_decl.tokens.push(peek());
@@ -921,8 +929,70 @@ var erg;
                                 }
                             }
 
-                            if (is_assignment) {
+                            function get_primitive_data_type_by_name(name) {
+                                var result = null;
 
+                                each(context.program.types, function(type) {
+                                    if (type.name === name) {
+                                        result = type;
+                                        return false;
+                                    }
+                                });
+
+                                return result;
+                            }
+
+                            if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
+                                is_explicitly_uninitialized = true;
+
+                                eat();
+                            }
+
+                            // TODO(jwwishart) should explicitly uninitialized values just defaults in JavaScript target?
+                            if (is_assignment && is_explicitly_uninitialized === false /* fall back to default values */) {
+                                // TODO(jwwishart) handle assigned expressions...
+                                // - literals
+                                // - expressions
+                                //   - calculations (only at function scope?)
+                                //   - function results( covererd in previous point?)
+                                //   - ?
+
+
+
+                                (function() {
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+                                    var expressions = parse_expression(current_scope);
+
+                                }());
+
+                            } else {
+                                // If there is no assignment we essentially add an assignment
+                                // for the default expected value for primitive types or null
+                                // for anything else (at the moment!)
+                                // TODO(jwwishart) should the above be correct? Custom types
+                                // should maybe have a DEFAULT value that can be configurable?
+                                // in the type definition? or should they just be a default
+                                // instance with fields that have default values?
+
+                                // TODO(jwwishart) we should grab these from the program scope?
+                                // TODO(jwwishart) Handle all primitive types?
+                                // TODO(jwwishart) make this a function to handle JUST primitive types!
+                                //      -- is_primitive_type
+                                //      -- get_primitive_data_type_definition 
+                                switch(data_type_name) {
+                                    case 'string':
+                                    case 'int':
+                                    case 'float':
+                                    case 'bool':
+                                        // Notice we sent NULL through for the value... we will use the data_type default value in this case!
+                                        variable_decl.init.push(new Literal(null, get_primitive_data_type_by_name(data_type_name)));
+                                        break;
+
+                                }
                             }
 
                             // TODO(jwwishart) 'const' might need to be assigned to variable_type
@@ -939,9 +1009,11 @@ var erg;
             eat();
         }
 
-        function parse_variable_declaration(current_scope) {
-            if (accept(TOKEN_TYPE_SINGLE_COLON)) {
-            }
+        function parse_expression(current_scope) {
+            // Literals
+            // Expression parts
+            // function calls
+            // etc??
         }
 
     }());
@@ -955,6 +1027,8 @@ var erg;
     }
 
     function Scope(parent) {
+        AstNode.call(this); // Classical Inheritance. Make this item an AstNode
+
         this.parent = parent; // only need to go UP the scope, not down...
         
         this.statements = [];
@@ -963,7 +1037,6 @@ var erg;
         this.types = [];        // enum, structs (built in types if on program)
         this.identifiers = [];  // function and variable
     }
-    Scope.prototype = new AstNode();
 
 
 
@@ -975,6 +1048,8 @@ var erg;
     //              type decl.
     // scope      = the scope containing the decl.
     function SymbolInformation(identifier, decl, scope) {
+        AstNode.call(this);
+
         this.identifier  = identifier;
         this.declaration = decl;
         this.scope       = scope;
@@ -985,10 +1060,11 @@ var erg;
         // then we are done type inference!
         this.is_resolved = false;
     }
-    SymbolInformation.prototype = new AstNode();
 
 
     function Program() {
+        AstNode.call(this, null);
+
         if (this === undefined) {
             throw new Error("Program not called as a constructor");
         }
@@ -996,28 +1072,26 @@ var erg;
         this.files = [];
         this.types = [
             // NOTE(jwwishart) the default value is RAW as we 
-            new DataType('any',     null,   true),
-            new DataType('string',  '',     true),
-            new DataType('int',     0,      true),
-            new DataType('float',   0.0,    true)
+            new DataType('any',     'null',   true),
+            new DataType('string',  '\'\'',     true),
+            new DataType('int',     '0',      true),
+            new DataType('float',   '0.0',    true),
+            new DataType('bool',   'false',    true)
         ];
 
         // Contains all symbols in the program
         this.symbol_info = [];
     }
-    Program.prototype = new AstNode();
 
 
     function File(name, program) {
+        Scope.call(this, program);
+
         this.filename = name;
         this.program = program;
 
-        this.parent = program;
-
         this.types = [];
     }
-    File.prototype = new Scope();
-
 
     
 
@@ -1034,7 +1108,7 @@ var erg;
         this.init = init || [];
         this.is_exported = identifier[0] !== '_';
     }
-    VariableDeclaration.prototype = new AstNode();
+    VariableDeclaration.prototype = Object.create(AstNode.prototype);
 
 
 
@@ -1042,14 +1116,23 @@ var erg;
     //
 
     function DataType(name, default_value, is_builtin) {
+
+        if (default_value === undefined) {
+            default_value = 'null';
+        }
+
+        if (is_string(default_value) === false) {
+            throw new Error("DataType constructor must take a STRING representation for the default_value argument");
+        }
+
         this.name = name;
-        this.default_value = default_value || null;
-        this.is_builtin = is_builtin || false;
+        this.default_value = default_value;
+        this.is_builtin = is_builtin;
     }
 
     function Literal(value, data_type) {
         this.value = value;
-        this.data_type = data_type || new DataType('any', null, true);
+        this.data_type = data_type || new DataType('any', 'null', true);
     }
 
 
@@ -1157,8 +1240,23 @@ var erg;
             // VariableDeclaration
             if (node instanceof VariableDeclaration) {
                 (function() {
-                    result.push(prefix + 'var ' + node.identifier + ' = null;');
-                    
+                    var value = 'null';
+                    if (node.init.length === 1 && node.init[0] instanceof Literal) {
+                        if (node.init[0].value === null) {
+                            value = node.init[0].data_type.default_value;
+                        } else {
+                            value = node.init[0].value;
+                        }
+
+                        if (value == null) {
+                            value = 'null';
+                        }
+
+                        result.push(prefix + 'var ' + node.identifier + ' = ' + value + ';');
+                    // TODO(jwwishart) handle further expressions
+                    } else {
+                        result.push(prefix + 'var ' + node.identifier + ' = null;');
+                    }
                 }());
             }
 
