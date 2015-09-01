@@ -1,39 +1,25 @@
-// Generated: 2015-8-22 14:26
-;(function(global){
-  var type_string = "";
-  var type_int = 0;
-  var type_float = 0.0;
-  var type_bool = false;
-  var type_any = null;
-  var type_any2 = "This should be fine!";
-  console.log(type_any);
-  type_any = "Just happens to have a string now!";
-  console.log(type_any);
-  type_any = true;
-  console.log(type_any);
-  console.log(type_any2);
-  console.log(type_string);
-  type_string = "now it has a non-default value";
-  console.log(type_string);
-  var type_string_initialized = "what";
-  var type_string_null_initialized = null;
-  var type_int_null_initialized = null;
-  var type_float_null_initialized = null;
-  var type_bool_null_initialized = null;
-  var type_string_not_initialized = null;
-  var type_int_not_initialized = null;
-  var type_float_not_initialized = null;
-  var type_bool_not_initialized = null;
-  console.log(type_string_not_initialized);
-  console.log(type_int_not_initialized);
-  type_int_not_initialized = 1000;
-  console.log(type_int_not_initialized);
-  var message = "Hello World";
-  var age = 35;
-  var amount = 25.25;
-  var isSuccess = true;
-  console.log(message);
-  console.log(age);
-  console.log(amount);
-  console.log(isSuccess);
-}(this));
+// Generated: 2015-9-1 22:24
+// File Start: input_filename
+    var type_string = '';
+    var type_int = 0;
+    var type_float = 0.0;
+    var type_bool = false;
+    var type_any = null;
+    var type_string_explicity_uninitialized = '';
+    var type_int_explicity_uninitialized = 0;
+    var type_float_explicity_uninitialized = 0.0;
+    var type_bool_explicity_uninitialized = false;
+    var type_any_explicity_uninitialized = null;
+    var type_string_assigned = 'Hello World';
+    var type_string_assigned2 = 'Don\'t Sweat the single Quotes';
+    var type_int_assigned = 256;
+    var type_float_assigned = 1.5670;
+    var type_bool_assigned = true;
+    var no_type_string_init = 'Hello World';
+    var no_type_string_init2 = 'Don\'t Sweat the single Quotes';
+    var no_type_int_init = 256;
+    var no_type_float_init = 1.5670;
+    var no_type_bool_init = true;
+// File End: input_filename
+
+

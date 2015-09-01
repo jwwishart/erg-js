@@ -1,73 +1,44 @@
-/*
-    Variables
+/* TODO
+- ERROR CASES: bottom of file.
+- identifier already defined in scope, cannot re-declare variable
+- type mistmatch (num : int = "boo")
+- constants. num : const int = 15; // must be initialized must match type
+- any can be assigned anything.. null by default (null reference vs literals??? boxing?
 */
 
-// Declarations - initialized to default value
-type_string : string;
-type_int    : int;
-type_float  : float;
-type_bool   : bool;
-type_any    : any;
-type_any2   : any = "This should be fine!";
-
-// 'any' type assignment checks
-print(type_any); // Prints null as type_any is null
-type_any = "Just happens to have a string now!";
-print(type_any); // SHould print the string
-type_any = true;
-print(type_any); // Should print the boolean value
-
-print(type_any2);
-
-// test default initializiation and assignments
-print(type_string);
-type_string = "now it has a non-default value";
-print(type_string);
-
-type_string_initialized : string = "what";
-
-// Declarations - explicitly initialized to null
-type_string_null_initialized : string = null;
-type_int_null_initialized    : int    = null;
-type_float_null_initialized  : float  = null;
-type_bool_null_initialized   : bool   = null;
-
-// Declarations - explicitly not initialized
-// TODO(jwwishart) should uninitialized variables actually be set to null? not left as undefined? in JS compile target?
-type_string_not_initialized : string = ---;
-type_int_not_initialized    : int    = ---;
-type_float_not_initialized  : float  = ---;
-type_bool_not_initialized   : bool   = ---;
-
-print(type_string_not_initialized); // @WARN this should show a warning
-
-print(type_int_not_initialized); // @WARN this should show a warning
-type_int_not_initialized = 1000; // If it wasn't initialized, it is now!
-print(type_int_not_initialized); // This should NOT warn as it is now initialized
+// Type Specified - No Assignment (default values assigned)
+type_string : string;   // Should be ''
+type_int    : int;      // Should be 0 (zero)
+type_float  : float;    // Should be 0.0 (zero)
+type_bool   : bool;     // should be false
+type_any    : any;      // should be null
 
 
-// Declarations - Initialized by literals
-// TODO(jwwishart) these need type inference
-message := "Hello World";
-age := 35;
-amount := 25.25;
-isSuccess := true;
+// Type Specified - Uninitialized (defaults values assigned ... this
+// JavaScript target would not support this type of construct)
+type_string_explicity_uninitialized : string = ---;
+type_int_explicity_uninitialized    : int = ---;
+type_float_explicity_uninitialized  : float = ---;
+type_bool_explicity_uninitialized   : bool = ---;
+type_any_explicity_uninitialized    : any = ---;
 
-print(message);
-print(age);
-print(amount);
-print(isSuccess);
 
-/*** TODOS ********************************************************************
+// Type Specified - Initialized
+type_string_assigned : string = "Hello World";
+type_string_assigned2 : string = "Don't Sweat the single Quotes";
+type_int_assigned : int = 256;
+type_float_assigned : float = 1.5670
+type_bool_assigned : bool = true;
 
-- Validate Types
-- assignment to 'any' type of a value of any type
-
-*/
+// Type Not Specified - Initialized
+no_type_string_init := "Hello World";
+no_type_string_init2 := "Don't Sweat the single Quotes";
+no_type_int_init := 256;
+no_type_float_init := 1.5670
+no_type_bool_init := true;
 
 
 /*** ERROR CASES **************************************************************
-
 me_no_exist = "now it has a non-default value"; // variable name doesn't exist... 
 message := "what?"; // should fail because variable exists
 message := "what?" // no semicolon!
@@ -75,5 +46,5 @@ type_string_assignment_but_no_value  := ; // no value assigned!
 type_string_assignment_but_no_value2 : string = ; // no value assigned!
 you_cant_do_this := ---; // you should have a literal or expression as there is not type and we can't infer the type!
 type_string = false; // type_string is a string. You can't assign a boolean value
-
 */
+

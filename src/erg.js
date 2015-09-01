@@ -277,7 +277,7 @@ var erg;
 
     var Token = function(type, lexeme) {
         this.type = type;
-        this.typeName = get_global_constant_name('TOKEN_TYPES', type);
+        this.type_name = get_global_constant_name('TOKEN_TYPES', type);
         this.lexeme = lexeme;
         this.text = lexeme.text;
     };
@@ -693,6 +693,13 @@ var erg;
                         // KEYWORD
                         //
 
+                        if (token.text === "true" || token.text === "false") {
+                            (function() {
+                                token.type = TOKEN_TYPE_BOOLEAN_LITERAL;
+                                token.type_name = get_global_constant_name('TOKEN_TYPES', token.type);
+                            }())
+                        }
+
                         if (token.text === "asm") {
                             token = create_token(TOKEN_TYPE_ASM_BLOCK, '')
 
@@ -824,6 +831,19 @@ var erg;
             // TODO(jwwishart) if type decl then add to types on the scope!
         }
 
+        function get_primitive_data_type_by_name(name) {
+            var result = null;
+
+            each(context.program.types, function(type) {
+                if (type.name === name) {
+                    result = type;
+                    return false;
+                }
+            });
+
+            return result;
+        }
+
         /// Parses tokens and constructs an ast on the program
         /// ast node that is passed in.
         ///
@@ -880,7 +900,12 @@ var erg;
             }
         }
 
+
         function parse_statement(current_scope) {
+            if (accept(TOKEN_TYPE_BRACE_OPEN)) {
+                parse_scope(current_scope);
+            }
+
             if (accept(TOKEN_TYPE_IDENTIFIER)) {
                 (function() {
                     var token = peek();
@@ -929,18 +954,7 @@ var erg;
                                 }
                             }
 
-                            function get_primitive_data_type_by_name(name) {
-                                var result = null;
 
-                                each(context.program.types, function(type) {
-                                    if (type.name === name) {
-                                        result = type;
-                                        return false;
-                                    }
-                                });
-
-                                return result;
-                            }
 
                             if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
                                 is_explicitly_uninitialized = true;
@@ -957,18 +971,11 @@ var erg;
                                 //   - function results( covererd in previous point?)
                                 //   - ?
 
-
-
                                 (function() {
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
                                     var expressions = parse_expression(current_scope);
 
+                                    variable_decl.init = expressions;
                                 }());
-
                             } else {
                                 // If there is no assignment we essentially add an assignment
                                 // for the default expected value for primitive types or null
@@ -1010,10 +1017,40 @@ var erg;
         }
 
         function parse_expression(current_scope) {
+            var parts = [];
+            var token = peek();
+
+            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+
             // Literals
+            //
+
+            if (accept(TOKEN_TYPE_STRING_LITERAL)) {
+                parts.push(new Literal(token.text, get_primitive_data_type_by_name('string')));
+            } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
+                parts.push(new Literal(token.text, get_primitive_data_type_by_name('bool')));
+            } else if (accept(TOKEN_TYPE_NUMBER_LITERAL)) {
+                parts.push(new Literal(token.text, get_primitive_data_type_by_name('number')));
+            } else if (accept(TOKEN_TYPE_NULL)) {
+                parts.push(new Literal('null', get_primitive_data_type_by_name('any')));
+            }
+
+            eat();
+
+            if (!accept(TOKEN_TYPE_SEMICOLON)) {
+                // TODO(jwwishart) continue the loop
+            }
+
             // Expression parts
             // function calls
             // etc??
+
+            return parts;
         }
 
     }());
@@ -1072,11 +1109,11 @@ var erg;
         this.files = [];
         this.types = [
             // NOTE(jwwishart) the default value is RAW as we 
-            new DataType('any',     'null',   true),
-            new DataType('string',  '\'\'',     true),
-            new DataType('int',     '0',      true),
-            new DataType('float',   '0.0',    true),
-            new DataType('bool',   'false',    true)
+            new DataType('any',     'null',  true),
+            new DataType('string',  '',      true),
+            new DataType('int',     '0',     true),
+            new DataType('float',   '0.0',   true),
+            new DataType('bool',    'false', true)
         ];
 
         // Contains all symbols in the program
@@ -1102,21 +1139,20 @@ var erg;
     ///     variable_type   : variable type (var, const)
     ///     data_type       : the data type as TypeDefinition
     function VariableDeclaration(identifier, variable_type, data_type, init) {
+        AstNode.call(this, null);
+
         this.identifier = identifier;
         this.variable_type = variable_type || 'variable'; // variable or constant
         this.data_type = data_type || 'any';
         this.init = init || [];
         this.is_exported = identifier[0] !== '_';
     }
-    VariableDeclaration.prototype = Object.create(AstNode.prototype);
-
 
 
     // @Data Types ------------------------------------------------------------
     //
 
     function DataType(name, default_value, is_builtin) {
-
         if (default_value === undefined) {
             default_value = 'null';
         }
@@ -1250,6 +1286,10 @@ var erg;
 
                         if (value == null) {
                             value = 'null';
+                        }
+
+                        if (node.init[0].data_type.name === 'string') {
+                            value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
                         }
 
                         result.push(prefix + 'var ' + node.identifier + ' = ' + value + ';');

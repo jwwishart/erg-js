@@ -8,15 +8,70 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/highlight.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.0/lodash.min.js"></script>
 
+        <script src="codemirror.js"></script>
+        <script src="language.js"></script>
+        <link rel="stylesheet" href="codemirror.css">
+
         <style type="text/css">
-            .panel {
-                width:  33%;
-                padding: 0;
-                margin: 0;
-                display: inline-block;
-                vertical-align: top;
+            .CodeMirror {
+                border: 1px solid #ccc;
+                margin-top: 5px;
+                height: 50%;
             }
+
+/* base16-dark is ok! */
+
+
+
+
+/* neo theme for codemirror */
+
+/* Color scheme */
+
+.cm-s-neo.CodeMirror {
+  background-color:#ffffff;
+  color:#2e383c;
+  line-height:1.4375;
+}
+.cm-s-neo .cm-comment { color:#75787b; }
+.cm-s-neo .cm-keyword, .cm-s-neo .cm-property { color:#1d75b3; }
+.cm-s-neo .cm-atom,.cm-s-neo .cm-number { color:#75438a; }
+.cm-s-neo .cm-node,.cm-s-neo .cm-tag { color:#9c3328; }
+.cm-s-neo .cm-string { color:#b35e14; }
+.cm-s-neo .cm-variable,.cm-s-neo .cm-qualifier { color:#047d65; }
+
+
+/* Editor styling */
+
+.cm-s-neo pre {
+  padding:0;
+}
+
+.cm-s-neo .CodeMirror-gutters {
+  border:none;
+  border-right:10px solid transparent;
+  background-color:transparent;
+}
+
+.cm-s-neo .CodeMirror-linenumber {
+  padding:0;
+  color:#e0e2e5;
+}
+
+.cm-s-neo .CodeMirror-guttermarker { color: #1d75b3; }
+.cm-s-neo .CodeMirror-guttermarker-subtle { color: #e0e2e5; }
+
+.cm-s-neo .CodeMirror-cursor {
+  width: auto;
+  border: 0;
+  background: rgba(155,157,162,0.37);
+  z-index: 1;
+}
+
+
+
         </style>
+
     </head>
     <body>
 
@@ -79,11 +134,6 @@ my_print(12);
 </textarea>
 
 <pre class="panel">
-<code id='highlighted' class='cpp'>
-</code>
-</pre>
-
-<pre class="panel">
 <code id='output' class='javascript'>
 </code>
 </pre>
@@ -94,13 +144,20 @@ my_print(12);
 
 
         <script>
+
+            var mirror = CodeMirror.fromTextArea($("#code")[0], {
+                theme: 'neo'
+            });
+
+
+
             if (localStorage.getItem('code') != null && localStorage.getItem('code').length > 0) {
-                document.getElementById('code').value = localStorage.getItem('code');
+                mirror.setValue(localStorage.getItem('code'));
             }
 
-            $("#code").on("change keyup", function() {
-                codeChangedDebounced();
-            });
+            // $("#code").on("change keyup", function() {
+            //     codeChangedDebounced();
+            // });
 
             function codeChanged() {
                 if (localStorage.getItem('oldCode') == null) {
@@ -118,13 +175,17 @@ my_print(12);
                 oldCode.push(localStorage.getItem('code'));
                 localStorage.setItem('oldCode', JSON.stringify(oldCode));
 
-                localStorage.setItem("code", document.getElementById('code').value);
+                localStorage.setItem("code", mirror.getValue());
 
                 // TODO(jwwishart) throttle updating the height of the textarea!
-                updateHighlighted();
+                // updateHighlighted();
             }
 
             var codeChangedDebounced = _.debounce(codeChanged, 500);
+
+            mirror.on('change', function(cm, change) {
+                codeChangedDebounced();
+            });
 
             function highlight() {
               $('pre code').each(function(i, block) {
@@ -132,18 +193,18 @@ my_print(12);
               });   
             }
 
-            function updateHighlighted() {
-                var code = document.getElementById('code').value;
-                document.getElementById('highlighted').textContent = code;
+            // function updateHighlighted() {
+            //     var code = mirror.getValue();
+            //     document.getElementById('highlighted').textContent = code;
 
-                highlight();
-            }          
+            //     highlight();
+            // }          
 
-            updateHighlighted();
+            // updateHighlighted();
 
             // Compile Handler
             function exec() {
-                var code = document.getElementById('code').value;
+                var code = mirror.getValue();
                 var output = document.getElementById('output');
                 output.textContent = 
                 erg.compile({ 
