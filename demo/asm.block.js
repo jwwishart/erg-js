@@ -1,12 +1,14 @@
-;(function(global){
-  function woo_hoo(message) {
+// Generated: 2015-9-2 21:11
+// File Start: input_filename
 
 // RAW ASM OUTPUT START (javascript -------------------------
 
-console.log(message.toUpperCase());
+ 
+    console.log('Hello World');
+
 
 // RAW ASM OUTPUT END (javascript) --------------------------
 
-  }
-  woo_hoo("This function takes a string and uppercases it using raw javascript asm block!");
-}(this));
+// File End: input_filename
+
+

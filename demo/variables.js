@@ -1,4 +1,4 @@
-// Generated: 2015-9-1 22:24
+// Generated: 2015-9-2 20:59
 // File Start: input_filename
     var type_string = '';
     var type_int = 0;
@@ -20,6 +20,14 @@
     var no_type_int_init = 256;
     var no_type_float_init = 1.5670;
     var no_type_bool_init = true;
+    var const1 = 15; // const
+    var const2 = 'This is great!'; // const
+    type_string = 'Welcome';
+    type_int = 1234;
+    type_float = 1234.5678;
+    type_bool = true;
+    type_any = 'I\'ll just set as a string for the moment!';
+    type_any = null;
 // File End: input_filename
 
 

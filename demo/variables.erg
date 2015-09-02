@@ -38,7 +38,24 @@ no_type_float_init := 1.5670
 no_type_bool_init := true;
 
 
+// Constants
+const1 :: 15;
+const2 :: "This is great!";
+
+
+// Re-Assignment
+type_string = "Welcome";
+type_int    = 1234;
+type_float  = 1234.5678;
+type_bool   = true;
+type_any    = "I'll just set as a string for the moment!";
+type_any    = null;
+
+
+
 /*** ERROR CASES **************************************************************
+type_any = ; // you can't assign nothing!
+const1 = 17; // this should error as const1 is defined and is a 'const' type
 me_no_exist = "now it has a non-default value"; // variable name doesn't exist... 
 message := "what?"; // should fail because variable exists
 message := "what?" // no semicolon!

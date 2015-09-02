@@ -1,4 +1,4 @@
-// Generated: 2015-8-31 22:45
+// Generated: 2015-9-2 20:29
 // File Start: input_filename
     var type_string = '';
     var type_int = 0;
@@ -10,9 +10,9 @@
     var type_float_explicity_uninitialized = 0.0;
     var type_bool_explicity_uninitialized = false;
     var type_any_explicity_uninitialized = null;
-    var num = null;
-    var _num = null;
-    var num2 = null;
+    var num = 15;
+    var _num = 16;
+    var num2 = 17;
     var num2 = null;
 // File End: input_filename
 

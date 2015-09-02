@@ -1,8 +1,3 @@
-
-woo_hoo :: (message) {
-    asm {
-        console.log(message.toUpperCase());
-    }
+asm {
+    console.log('Hello World');
 }
-
-woo_hoo("This function takes a string and uppercases it using raw javascript asm block!");

@@ -716,6 +716,10 @@ var erg;
                             token = create_token(TOKEN_TYPE_KEYWORD_RETURN, 'return');
                         }
 
+                        if (token.text === "null") {
+                            token = create_token(TOKEN_TYPE_NULL, 'null');
+                        }
+
                         return token;
                     }
 
@@ -819,6 +823,7 @@ var erg;
             current_scope.statements.push(statement);
 
             // TODO(jwwishart) add variable and func identifiers...
+            // TODO(jwwishart) prevent adding duplcates!
             if (statement instanceof VariableDeclaration) {
                 current_scope.identifiers.push(statement);
 
@@ -906,6 +911,12 @@ var erg;
                 parse_scope(current_scope);
             }
 
+            if (accept(TOKEN_TYPE_ASM_BLOCK)) {
+                add_statement(context, current_scope, new AsmBlock(peek().text));
+                eat()
+                return;
+            }
+
             if (accept(TOKEN_TYPE_IDENTIFIER)) {
                 (function() {
                     var token = peek();
@@ -919,7 +930,10 @@ var erg;
                     // TODO(jwwishart) put this into a function...
                     // TODO(jwwishart) put other situations into separate helper functions...
 
-                    if (accept([TOKEN_TYPE_SINGLE_COLON, TOKEN_TYPE_COLON_EQUALS])) {
+                    if (accept([TOKEN_TYPE_SINGLE_COLON,
+                                TOKEN_TYPE_COLON_EQUALS, 
+                                TOKEN_TYPE_DOUBLE_COLON])) 
+                    {
                         (function() {
                             var variable_decl = new VariableDeclaration(identifier);
                             var data_type_name = 'any';
@@ -933,7 +947,15 @@ var erg;
                             // Type declared or inferred
                             //
 
-                            if (accept(TOKEN_TYPE_COLON_EQUALS)) {
+                            if (accept(TOKEN_TYPE_DOUBLE_COLON)) {
+                                // NOTE(jwwishart) constants should be primitive
+                                // and should be able to be type inferred without issue!
+                                // TODO(jwwishart) what about assignment from another const?
+                                // TODO(jwwishart) is this correct... should a type be able to be specified?
+                                variable_decl.variable_type = 'const';
+                                is_assignment = true;
+                                eat(); // ::
+                            } else if (accept(TOKEN_TYPE_COLON_EQUALS)) {
                                 is_assignment = true;
                                 eat(); // :=
                             } else if (accept(TOKEN_TYPE_SINGLE_COLON)) {
@@ -953,8 +975,6 @@ var erg;
                                     }
                                 }
                             }
-
-
 
                             if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
                                 is_explicitly_uninitialized = true;
@@ -1007,7 +1027,29 @@ var erg;
                             add_statement(context, current_scope, variable_decl);
                         }());
                     }
+
+
+                    // Assignment
+                    //
+
+                    if (accept(TOKEN_TYPE_ASSIGNMENT)) {
+                        eat(); // =
+
+                        (function() {
+                            var statement = new AssignmentStatement(identifier);
+                            statement.init = parse_expression(current_scope);
+
+                            add_statement(context, current_scope, statement);
+                            
+                            // TODO(jwwishart) null assignment????
+                            // TODO(jwwishart) ensure we have something to assign otherwise this is pointless... i.e. a semicolon after the = is just WRONG!
+                            // TODO(jwwishart) check the expression type is a known type
+                            // TODO(jwwishart) check the expression type is the same as the or compatible with
+                            //  the variable type
+                        }());
+                    }
                     
+
                 }());
             }
 
@@ -1130,6 +1172,12 @@ var erg;
         this.types = [];
     }
 
+
+    function AsmBlock(raw_code) {
+        AstNode.call(this, null);
+
+        this.raw_code = raw_code;
+    }
     
 
 
@@ -1142,10 +1190,18 @@ var erg;
         AstNode.call(this, null);
 
         this.identifier = identifier;
-        this.variable_type = variable_type || 'variable'; // variable or constant
+        this.variable_type = variable_type || 'var'; // var or const
         this.data_type = data_type || 'any';
         this.init = init || [];
         this.is_exported = identifier[0] !== '_';
+    }
+
+    function AssignmentStatement(identifier, variable_decl, init) {
+        AstNode.call(this, null);
+
+        this.identifier = identifier;
+        this.variable_decl = variable_decl;
+        this.init = init || [];
     }
 
 
@@ -1274,9 +1330,11 @@ var erg;
 
 
             // VariableDeclaration
-            if (node instanceof VariableDeclaration) {
+            if (node instanceof VariableDeclaration || node instanceof AssignmentStatement) {
                 (function() {
                     var value = 'null';
+                    var is_decl = node instanceof VariableDeclaration;
+
                     if (node.init.length === 1 && node.init[0] instanceof Literal) {
                         if (node.init[0].value === null) {
                             value = node.init[0].data_type.default_value;
@@ -1292,12 +1350,29 @@ var erg;
                             value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
                         }
 
-                        result.push(prefix + 'var ' + node.identifier + ' = ' + value + ';');
-                    // TODO(jwwishart) handle further expressions
+                        var note = '';
+                        if (node.variable_type === 'const') {
+                            note = ' // const';
+                        }
+
+                        result.push(prefix + (is_decl ? 'var ' : '') + node.identifier + ' = ' + value + ';' + note);
+                        // TODO(jwwishart) handle further expressions
                     } else {
+                        // TODO(jwwishart) assignment to a const not allowed!)
+                        if (node.variable_type === 'const') {
+                            throw new Error("Constant declaration must be initialized:" + JSON.stringify(node));
+                        }
+
                         result.push(prefix + 'var ' + node.identifier + ' = null;');
                     }
                 }());
+            }
+
+            // Asm Blogk
+            if (node instanceof AsmBlock)  {
+                result.push("\n// RAW ASM OUTPUT START (javascript -------------------------\n");
+                result.push(node.raw_code);
+                result.push("\n// RAW ASM OUTPUT END (javascript) --------------------------\n");
             }
 
             return result;
