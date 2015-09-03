@@ -1,4 +1,4 @@
-// Generated: 2015-9-2 20:59
+// Generated: 2015-9-3 22:56
 // File Start: input_filename
     var type_string = '';
     var type_int = 0;
@@ -28,6 +28,10 @@
     type_bool = true;
     type_any = 'I\'ll just set as a string for the moment!';
     type_any = null;
+    type_any = 'welcome home';
+    type_any = 1;
+    type_any = 1.234;
+    type_any = true;
 // File End: input_filename
 
 

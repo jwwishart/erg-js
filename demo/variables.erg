@@ -4,6 +4,11 @@
 - type mistmatch (num : int = "boo")
 - constants. num : const int = 15; // must be initialized must match type
 - any can be assigned anything.. null by default (null reference vs literals??? boxing?
+
+
+- Use of an identifier in an outer scope in an inner scope is fine! just not in the same scope!
+    depends on: functions, sub-scopes
+
 */
 
 // Type Specified - No Assignment (default values assigned)
@@ -52,16 +57,81 @@ type_any    = "I'll just set as a string for the moment!";
 type_any    = null;
 
 
+// Re-Assignment of any type to an 'any' type
+type_any = "welcome home";
+type_any = 1;
+type_any = 1.234;
+type_any = true;
+
+
+// Negatives...
+
+
+// TODO(jwwishart)
+// - const are not allowed to be changed (no assignment)
+// - declaration assignment type matches explicit type
+// - assignment statement assigned type matches the variable type
+// - null only assignable to 'any' type.
+
 
 /*** ERROR CASES **************************************************************
-type_any = ; // you can't assign nothing!
-const1 = 17; // this should error as const1 is defined and is a 'const' type
-me_no_exist = "now it has a non-default value"; // variable name doesn't exist... 
-message := "what?"; // should fail because variable exists
+
+-- VERIFIED ERROR CONDITIONS ---- the following items have been verified as working
+
+// ERROR: you cannot change the value of a const!
+my_const :: 15;
+my_const = 256
+
+
+// ERROR: duplicate declaration of identifier in the same scope!
+// NOTE(jwwishart) type is irrelevant... identifier is not allowed ...
+//  to be re-declared in the SAME scope!
+my_var := 15;
+my_var : string = "Noooo!";
+
+
+// ERROR: should not work as 15 is a numeric literal and we expect a string
+my_string : string = 15;
+
+
+// ERROR: cannot assign to undeclared identifier
+my_var = 12;
+
+
+// ERROR: no value assigned in variable declaration
+type_string_assignment_but_no_value  := ;
+type_string_assignment_but_no_value2 : string = ;
+
+// ERROR: you must provide a type with an explicity uninitialized variable declaration
+you_cant_do_this := ---;
+
+
+// ERROR: the declarations should be fine... the assignments are ALL wrong
+a_str   : string;   // Should be ''
+an_int  : int;      // Should be 0 (zero)
+a_float : float;    // Should be 0.0 (zero)
+a_bool  : bool;     // should be false
+an_any  : any;      // should be null
+
+//a_str   = 1235;
+//an_int  = 12.2414;
+//a_float = true;
+//a_bool  = "woo hooo";
+
+an_any  = null;
+//a_str   = null;
+//an_int  = null;
+//a_float = null;
+//a_bool  = null;
+
+
+
+
+-- TODO ---- the following have not been actioned
+
+
+// TODO: what if there is no semicolon? but also no operator after the literal?
 message := "what?" // no semicolon!
-type_string_assignment_but_no_value  := ; // no value assigned!
-type_string_assignment_but_no_value2 : string = ; // no value assigned!
-you_cant_do_this := ---; // you should have a literal or expression as there is not type and we can't infer the type!
-type_string = false; // type_string is a string. You can't assign a boolean value
+
 */
 

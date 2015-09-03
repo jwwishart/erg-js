@@ -1,3 +1,12 @@
+/*
+    Backlog:
+    - Figure out how to log errors better and clearer... might have
+      to create item writer that avoids recursion.
+    - Sub Scopes!
+
+*/
+
+
 var __global = this;
 var erg;
 
@@ -244,7 +253,8 @@ var erg;
 
         // Literals
         'TOKEN_TYPE_STRING_LITERAL',
-        'TOKEN_TYPE_NUMBER_LITERAL',
+        'TOKEN_TYPE_INTEGER_LITERAL',
+        'TOKEN_TYPE_FLOAT_LITERAL',
         'TOKEN_TYPE_BOOLEAN_LITERAL',
 
         // Punctuation
@@ -618,12 +628,17 @@ var erg;
                     // TODO(jwwishart) infer the type and assign with the token (float32, float64?.. assign as minimum_type_required for example
                     // TODO(jwwishart) negative numbers :oS
                     if (c >= '0' && c <= '9') {
-                        token = create_token(TOKEN_TYPE_NUMBER_LITERAL, '');
+                        token = create_token(TOKEN_TYPE_INTEGER_LITERAL, '');
                         
 
                         var number_result = get_number_literal();
                         token.text = number_result.result;
                         token.is_float = number_result.is_float;
+
+                        if (token.is_float) {
+                            token.type = TOKEN_TYPE_FLOAT_LITERAL;
+                            token.type_name = get_global_constant_name('TOKEN_TYPES', token.type);
+                        }
 
                         return token;
                     }
@@ -849,6 +864,74 @@ var erg;
             return result;
         }
 
+        function get_identifier_declaration_information(current_scope, identifier) {
+            var cont = {
+                scope: current_scope,
+                level: -1, // current scope is 0, 1 is next scope up etc...
+
+                decl: null,
+                found: false,
+
+                in_current_scope: false
+            };
+
+            find_identifier_use(cont, identifier);
+    
+            if (cont.level === 0) {
+                cont.in_current_scope = true;
+            }
+
+            return cont;
+        }
+
+        function find_identifier_use(cont, identifier) {
+            // Bail if we have no scope to process...
+            // Coercion on purpose... check for undefined just in case!
+            if (cont.scope == null) return;
+
+            cont.level++;
+
+            each(cont.scope.identifiers, function(item) {
+                // Variable Declarations
+                if (item instanceof VariableDeclaration &&
+                    item.identifier === identifier) 
+                {
+                    cont.found = true;
+                    cont.decl = item;
+
+                    return false; // cancel loop!
+                }
+
+                // Function Declarations
+                // TODO(jwwishart) handle function identifiers
+
+                // Type Declarations
+                // TODO(jwwishart) handle type declarations
+            });
+
+            if (!cont.found) {
+                cont.scope = cont.scope.parent;
+
+                find_identifier_use(cont, identifier);
+            }
+        }
+
+        function infer_type(expressions) {
+            if (expressions.length == 1) {
+                // TODO(jwwishart) this if block should not be here, just iterate
+                // the expression parts and determine the types...
+                if (expressions[0] instanceof Literal) {
+                    return expressions[0].data_type;
+                }
+            }
+            
+            throw new Error("NOT IMPLEMENTED: infer_type no expression of type " + typeof(expression) + " not yet available");
+        }
+
+        function is_null_literal(expressions) {
+            return expressions.length === 1 && expressions[0] instanceof Literal && expressions[0].value === "null" && expressions[0].type == null; // or undefined
+        }
+
         /// Parses tokens and constructs an ast on the program
         /// ast node that is passed in.
         ///
@@ -935,8 +1018,15 @@ var erg;
                                 TOKEN_TYPE_DOUBLE_COLON])) 
                     {
                         (function() {
+                            var info = get_identifier_declaration_information(current_scope, identifier);
+
+                            if (info != null && info.decl  != null) {
+                                throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+                            }
+
                             var variable_decl = new VariableDeclaration(identifier);
                             var data_type_name = 'any';
+                            var is_data_type_explicit = false;
                             var is_assignment = false;
                             var is_explicitly_uninitialized = false;
 
@@ -961,6 +1051,8 @@ var erg;
                             } else if (accept(TOKEN_TYPE_SINGLE_COLON)) {
                                 eat(); // :
 
+                                is_data_type_explicit = true;
+
                                 // data_type?
                                 if (expect(TOKEN_TYPE_IDENTIFIER)) {
                                     data_type_name = peek().text;
@@ -982,7 +1074,8 @@ var erg;
                                 eat();
                             }
 
-                            // TODO(jwwishart) should explicitly uninitialized values just defaults in JavaScript target?
+                            
+
                             if (is_assignment && is_explicitly_uninitialized === false /* fall back to default values */) {
                                 // TODO(jwwishart) handle assigned expressions...
                                 // - literals
@@ -994,9 +1087,33 @@ var erg;
                                 (function() {
                                     var expressions = parse_expression(current_scope);
 
+                                    if (expressions.length === 0) {
+                                        throw new Error("Variable declaration '" + identifier + "' missing initialization value" + JSON.stringify(peek()));
+                                    }
+
+                                    // TODO(jwwishart) what is can't infer the type?
+                                    // TODO(jwwishart) what if expression is NULL!!!
+
+                                    var inferred_type = infer_type(expressions);
+
+                                    if (is_data_type_explicit) {
+                                        if (inferred_type.name === data_type_name) {
+                                            // Is Don, is Good!
+                                        } else {
+                                            throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + data_type_name + "'");
+                                        }
+                                    }
+
                                     variable_decl.init = expressions;
                                 }());
                             } else {
+                                if (is_data_type_explicit == false &&
+                                    is_assignment &&
+                                    is_explicitly_uninitialized === true) 
+                                {
+                                    throw new Error("You cannot explicitly uninitilize an untyped variable declaration... you must provide a type! " +  JSON.stringify(peek()));
+                                }
+
                                 // If there is no assignment we essentially add an assignment
                                 // for the default expected value for primitive types or null
                                 // for anything else (at the moment!)
@@ -1022,7 +1139,9 @@ var erg;
                                 }
                             }
 
+
                             // TODO(jwwishart) 'const' might need to be assigned to variable_type
+
                             variable_decl.data_type = data_type_name;
                             add_statement(context, current_scope, variable_decl);
                         }());
@@ -1036,8 +1155,47 @@ var erg;
                         eat(); // =
 
                         (function() {
+                            var info = get_identifier_declaration_information(current_scope, identifier);
+
+                            // Constants cannot be re-assigned another value...
+                            if (info.decl instanceof VariableDeclaration &&
+                                info.decl.variable_type === 'const') 
+                            {
+                                throw new Error("Constant '" + identifier + "' cannot be changed; " + JSON.stringify(info.decl));
+                            }
+
+                            // Cannot find identifier to assign the value to...
+                            if (info.found === false) {
+                                throw new Error("Cannot assign value to undeclared identifier '" + identifier + "' " + JSON.stringify(peek()));
+                            }
+
+                            // Start Statement Constructions and Parse Expressions
                             var statement = new AssignmentStatement(identifier);
-                            statement.init = parse_expression(current_scope);
+                            var expressions = parse_expression(current_scope);
+
+                            // Type Checking
+                            var inferred_type = infer_type(expressions);
+                            var expected_data_type = info.decl.data_type;
+
+                            // TODO(jwwishart) what is can't infer the type?
+                            // TODO(jwwishart) what if expression is NULL!!!
+
+
+                            // TODO(jwwishart) should be 'any' or any custom data type
+                            // that is defined as a struct (not sure about enums???)
+                            if (expected_data_type === 'any') {
+                                // Is Don, is Good!
+                            } else if (is_null_literal(expressions) && expected_data_type != 'any') {
+                                // TODO(jwwishart) should strings be nullable?
+                                throw new Error("Cannot assign null to non nullable type of '" + expected_data_type + "' - null can only be assigned to variables of type 'any' or custom variable types. " + JSON.stringify(peek()));
+                            } else if (inferred_type.name === expected_data_type) {
+                                // Is Don, is Good!
+                            } else {
+                                throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + expected_data_type + "' " + JSON.stringify(peek()));
+                            }
+                            
+                            // Done! Add statement!
+                            statement.init = expressions;
 
                             add_statement(context, current_scope, statement);
                             
@@ -1076,10 +1234,13 @@ var erg;
                 parts.push(new Literal(token.text, get_primitive_data_type_by_name('string')));
             } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
                 parts.push(new Literal(token.text, get_primitive_data_type_by_name('bool')));
-            } else if (accept(TOKEN_TYPE_NUMBER_LITERAL)) {
-                parts.push(new Literal(token.text, get_primitive_data_type_by_name('number')));
+            } else if (accept(TOKEN_TYPE_INTEGER_LITERAL)) {
+                parts.push(new Literal(token.text, get_primitive_data_type_by_name('int')));
+            } else if (accept(TOKEN_TYPE_FLOAT_LITERAL)) {
+                parts.push(new Literal(token.text, get_primitive_data_type_by_name('float')));
             } else if (accept(TOKEN_TYPE_NULL)) {
-                parts.push(new Literal('null', get_primitive_data_type_by_name('any')));
+                // No type!
+                parts.push(new Literal('null'));
             }
 
             eat();
@@ -1224,7 +1385,7 @@ var erg;
 
     function Literal(value, data_type) {
         this.value = value;
-        this.data_type = data_type || new DataType('any', 'null', true);
+        this.data_type = data_type;
     }
 
 
@@ -1337,7 +1498,9 @@ var erg;
 
                     if (node.init.length === 1 && node.init[0] instanceof Literal) {
                         if (node.init[0].value === null) {
-                            value = node.init[0].data_type.default_value;
+                            if (node.init[0].data_type) {
+                                value = node.init[0].data_type.default_value;
+                            }
                         } else {
                             value = node.init[0].value;
                         }
@@ -1346,8 +1509,10 @@ var erg;
                             value = 'null';
                         }
 
-                        if (node.init[0].data_type.name === 'string') {
-                            value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
+                        if (node.init[0].data_type) {
+                            if (node.init[0].data_type.name === 'string') {
+                                value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
+                            }
                         }
 
                         var note = '';
