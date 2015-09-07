@@ -1,0 +1,42 @@
+
+/*
+
+    // Variable Decl
+    name : string = "15";
+    name := "15";
+    name := ---;
+    name : any = null;
+
+
+    // Struct Decl
+    Name :: struct {
+        name1 : string = "15",
+        name2 := 15,
+        name3 : bool,
+        name4 : any, // should be legal!
+    }
+
+
+    // Enum Decl
+    ENUM_NAME :: enum {
+        NAME_1,
+        NAME_2 = 15,
+        NAME_3 = 256,
+        NAME_4 = "WOW!" // illegal!
+    }
+
+
+    // Function Decl
+    my_func :: (arg1 : string = "woo", arg2 = "whoo") -> string {
+        return "hello World" + arg1;
+    }
+
+
+*/
+
+Person :: struct {
+    name : string,
+    age  : int
+}
+
+me : Person;

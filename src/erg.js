@@ -282,7 +282,9 @@ var erg;
         'TOKEN_TYPE_UNINITIALIZE_OPERATOR',
         'TOKEN_TYPE_ASM_BLOCK',
         'TOKEN_TYPE_DIRECTIVE',
-        'TOKEN_TYPE_KEYWORD_DEFER'
+        'TOKEN_TYPE_KEYWORD_DEFER',
+        'TOKEN_TYPE_STRUCT_KEYWORD',
+        'TOKEN_TYPE_ENUM_KEYWORD'
     ]);
 
     var Token = function(type, lexeme) {
@@ -735,6 +737,14 @@ var erg;
                             token = create_token(TOKEN_TYPE_NULL, 'null');
                         }
 
+                        if (token.text === "struct") {
+                            token = create_token(TOKEN_TYPE_STRUCT_KEYWORD, 'struct');
+                        }
+
+                        if (token.text === "enum") {
+                            token = create_token(TOKEN_TYPE_ENUM_KEYWORD, 'enum');
+                        }
+
                         return token;
                     }
 
@@ -848,7 +858,10 @@ var erg;
                     current_scope));
             }
 
-            // TODO(jwwishart) if type decl then add to types on the scope!
+            // TODO(jwwishart) structure type declaration needs adding to the scope
+            // TODO(jwwishart) enum type declaration needs adding to the scope
+            // TODO(jwwishart) function type declaration needs adding to the scope
+
         }
 
         function get_primitive_data_type_by_name(name) {
@@ -984,7 +997,9 @@ var erg;
 
                 // Statements
                 parse_statement(current_scope);
-                context.log("PARSER", JSON.stringify(current_scope.statements[current_scope.statements.length - 1]));
+                
+                // TODO(jwwishart) this is circular so it breakd :o(
+                //context.log("PARSER", JSON.stringify(current_scope.statements[current_scope.statements.length - 1]));
             }
         }
 
@@ -996,219 +1011,95 @@ var erg;
 
             if (accept(TOKEN_TYPE_ASM_BLOCK)) {
                 add_statement(context, current_scope, new AsmBlock(peek().text));
-                eat()
+                eat();
                 return;
             }
 
             if (accept(TOKEN_TYPE_IDENTIFIER)) {
-                (function() {
-                    var token = peek();
-                    var identifier = token.text;
+                var token = peek();
+                var identifier = token.text;
 
-                    eat(); // identifier
+                eat(); // identifier
 
-                    // Variable Declaration (with or without type)
-                    //
-
-                    // TODO(jwwishart) put this into a function...
-                    // TODO(jwwishart) put other situations into separate helper functions...
-
-                    if (accept([TOKEN_TYPE_SINGLE_COLON,
-                                TOKEN_TYPE_COLON_EQUALS, 
-                                TOKEN_TYPE_DOUBLE_COLON])) 
-                    {
-                        (function() {
-                            var info = get_identifier_declaration_information(current_scope, identifier);
-
-                            if (info != null && info.decl  != null) {
-                                throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
-                            }
-
-                            var variable_decl = new VariableDeclaration(identifier);
-                            var data_type_name = 'any';
-                            var is_data_type_explicit = false;
-                            var is_assignment = false;
-                            var is_explicitly_uninitialized = false;
-
-                            //variable_decl.tokens.push(token);
-                            //variable_decl.tokens.push(peek());
+                // Various Types of Declarations
+                // - variable (done!)
+                // - type (struct) 
+                // - function ??
 
 
-                            // Type declared or inferred
-                            //
 
-                            if (accept(TOKEN_TYPE_DOUBLE_COLON)) {
-                                // NOTE(jwwishart) constants should be primitive
-                                // and should be able to be type inferred without issue!
-                                // TODO(jwwishart) what about assignment from another const?
-                                // TODO(jwwishart) is this correct... should a type be able to be specified?
-                                variable_decl.variable_type = 'const';
-                                is_assignment = true;
-                                eat(); // ::
-                            } else if (accept(TOKEN_TYPE_COLON_EQUALS)) {
-                                is_assignment = true;
-                                eat(); // :=
-                            } else if (accept(TOKEN_TYPE_SINGLE_COLON)) {
-                                eat(); // :
+                // Variable Declaration (with or without type)
+                //
 
-                                is_data_type_explicit = true;
+                // TODO(jwwishart) put this into a function...
+                // TODO(jwwishart) put other situations into separate helper functions...
 
-                                // data_type?
-                                if (expect(TOKEN_TYPE_IDENTIFIER)) {
-                                    data_type_name = peek().text;
-
-                                    eat(); // identifier
-
-                                    // TODO(jwwishart) does the type exist. Add to scope and program, mark as unknown type
-
-                                    if (accept(TOKEN_TYPE_ASSIGNMENT)) {
-                                        is_assignment = true;
-                                        eat(); // =
-                                    }
-                                }
-                            }
-
-                            if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
-                                is_explicitly_uninitialized = true;
-
-                                eat();
-                            }
-
-                            
-
-                            if (is_assignment && is_explicitly_uninitialized === false /* fall back to default values */) {
-                                // TODO(jwwishart) handle assigned expressions...
-                                // - literals
-                                // - expressions
-                                //   - calculations (only at function scope?)
-                                //   - function results( covererd in previous point?)
-                                //   - ?
-
-                                (function() {
-                                    var expressions = parse_expression(current_scope);
-
-                                    if (expressions.length === 0) {
-                                        throw new Error("Variable declaration '" + identifier + "' missing initialization value" + JSON.stringify(peek()));
-                                    }
-
-                                    // TODO(jwwishart) what is can't infer the type?
-                                    // TODO(jwwishart) what if expression is NULL!!!
-
-                                    var inferred_type = infer_type(expressions);
-
-                                    if (is_data_type_explicit) {
-                                        if (inferred_type.name === data_type_name) {
-                                            // Is Don, is Good!
-                                        } else {
-                                            throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + data_type_name + "'");
-                                        }
-                                    }
-
-                                    variable_decl.init = expressions;
-                                }());
-                            } else {
-                                if (is_data_type_explicit == false &&
-                                    is_assignment &&
-                                    is_explicitly_uninitialized === true) 
-                                {
-                                    throw new Error("You cannot explicitly uninitilize an untyped variable declaration... you must provide a type! " +  JSON.stringify(peek()));
-                                }
-
-                                // If there is no assignment we essentially add an assignment
-                                // for the default expected value for primitive types or null
-                                // for anything else (at the moment!)
-                                // TODO(jwwishart) should the above be correct? Custom types
-                                // should maybe have a DEFAULT value that can be configurable?
-                                // in the type definition? or should they just be a default
-                                // instance with fields that have default values?
-
-                                // TODO(jwwishart) we should grab these from the program scope?
-                                // TODO(jwwishart) Handle all primitive types?
-                                // TODO(jwwishart) make this a function to handle JUST primitive types!
-                                //      -- is_primitive_type
-                                //      -- get_primitive_data_type_definition 
-                                switch(data_type_name) {
-                                    case 'string':
-                                    case 'int':
-                                    case 'float':
-                                    case 'bool':
-                                        // Notice we sent NULL through for the value... we will use the data_type default value in this case!
-                                        variable_decl.init.push(new Literal(null, get_primitive_data_type_by_name(data_type_name)));
-                                        break;
-
-                                }
-                            }
+                if (accept([TOKEN_TYPE_SINGLE_COLON,
+                            TOKEN_TYPE_COLON_EQUALS,
+                            TOKEN_TYPE_DOUBLE_COLON]))
+                {
+                    parse_declaration(current_scope, identifier);
+                }
 
 
-                            // TODO(jwwishart) 'const' might need to be assigned to variable_type
+                // Assignment
+                //
 
-                            variable_decl.data_type = data_type_name;
-                            add_statement(context, current_scope, variable_decl);
-                        }());
-                    }
+                if (accept(TOKEN_TYPE_ASSIGNMENT)) {
+                    eat(); // =
 
+                    (function() {
+                        var info = get_identifier_declaration_information(current_scope, identifier);
 
-                    // Assignment
-                    //
+                        // Constants cannot be re-assigned another value...
+                        if (info.decl instanceof VariableDeclaration &&
+                            info.decl.variable_type === 'const') 
+                        {
+                            throw new Error("Constant '" + identifier + "' cannot be changed; " + JSON.stringify(info.decl));
+                        }
 
-                    if (accept(TOKEN_TYPE_ASSIGNMENT)) {
-                        eat(); // =
+                        // Cannot find identifier to assign the value to...
+                        if (info.found === false) {
+                            throw new Error("Cannot assign value to undeclared identifier '" + identifier + "' " + JSON.stringify(peek()));
+                        }
 
-                        (function() {
-                            var info = get_identifier_declaration_information(current_scope, identifier);
+                        // Start Statement Constructions and Parse Expressions
+                        var statement = new AssignmentStatement(identifier);
+                        var expressions = parse_expression(current_scope);
 
-                            // Constants cannot be re-assigned another value...
-                            if (info.decl instanceof VariableDeclaration &&
-                                info.decl.variable_type === 'const') 
-                            {
-                                throw new Error("Constant '" + identifier + "' cannot be changed; " + JSON.stringify(info.decl));
-                            }
+                        // Type Checking
+                        var inferred_type = infer_type(expressions);
+                        var expected_data_type = info.decl.data_type;
 
-                            // Cannot find identifier to assign the value to...
-                            if (info.found === false) {
-                                throw new Error("Cannot assign value to undeclared identifier '" + identifier + "' " + JSON.stringify(peek()));
-                            }
-
-                            // Start Statement Constructions and Parse Expressions
-                            var statement = new AssignmentStatement(identifier);
-                            var expressions = parse_expression(current_scope);
-
-                            // Type Checking
-                            var inferred_type = infer_type(expressions);
-                            var expected_data_type = info.decl.data_type;
-
-                            // TODO(jwwishart) what is can't infer the type?
-                            // TODO(jwwishart) what if expression is NULL!!!
+                        // TODO(jwwishart) what is can't infer the type?
+                        // TODO(jwwishart) what if expression is NULL!!!
 
 
-                            // TODO(jwwishart) should be 'any' or any custom data type
-                            // that is defined as a struct (not sure about enums???)
-                            if (expected_data_type === 'any') {
-                                // Is Don, is Good!
-                            } else if (is_null_literal(expressions) && expected_data_type != 'any') {
-                                // TODO(jwwishart) should strings be nullable?
-                                throw new Error("Cannot assign null to non nullable type of '" + expected_data_type + "' - null can only be assigned to variables of type 'any' or custom variable types. " + JSON.stringify(peek()));
-                            } else if (inferred_type.name === expected_data_type) {
-                                // Is Don, is Good!
-                            } else {
-                                throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + expected_data_type + "' " + JSON.stringify(peek()));
-                            }
-                            
-                            // Done! Add statement!
-                            statement.init = expressions;
+                        // TODO(jwwishart) should be 'any' or any custom data type
+                        // that is defined as a struct (not sure about enums???)
+                        if (expected_data_type === 'any') {
+                            // Is Don, is Good!
+                        } else if (is_null_literal(expressions) && expected_data_type != 'any') {
+                            // TODO(jwwishart) should strings be nullable?
+                            throw new Error("Cannot assign null to non nullable type of '" + expected_data_type + "' - null can only be assigned to variables of type 'any' or custom variable types. " + JSON.stringify(peek()));
+                        } else if (inferred_type.name === expected_data_type) {
+                            // Is Don, is Good!
+                        } else {
+                            throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + expected_data_type + "' " + JSON.stringify(peek()));
+                        }
+                        
+                        // Done! Add statement!
+                        statement.init = expressions;
 
-                            add_statement(context, current_scope, statement);
-                            
-                            // TODO(jwwishart) null assignment????
-                            // TODO(jwwishart) ensure we have something to assign otherwise this is pointless... i.e. a semicolon after the = is just WRONG!
-                            // TODO(jwwishart) check the expression type is a known type
-                            // TODO(jwwishart) check the expression type is the same as the or compatible with
-                            //  the variable type
-                        }());
-                    }
-                    
-
-                }());
+                        add_statement(context, current_scope, statement);
+                        
+                        // TODO(jwwishart) null assignment????
+                        // TODO(jwwishart) ensure we have something to assign otherwise this is pointless... i.e. a semicolon after the = is just WRONG!
+                        // TODO(jwwishart) check the expression type is a known type
+                        // TODO(jwwishart) check the expression type is the same as the or compatible with
+                        //  the variable type
+                    }());
+                }
             }
 
             // TODO(jwwishart) error here... if we get here
@@ -1216,9 +1107,210 @@ var erg;
             eat();
         }
 
-        function parse_expression(current_scope) {
+        /// Parse Declarations
+        ///
+        /// top level parse declaration function. This is where you start parsing a declaration
+        /// @decl_meta object containing identifier for the declaration
+        ///    Fields available are: 
+        ///     - identifier
+        ///     - is_struct
+        ///     - is_variable
+        ///     - is_function
+        function parse_declaration(current_scope, identifier) {
+            var info = get_identifier_declaration_information(current_scope, identifier);
+
+            if (info != null && info.decl  != null) {
+                throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+            }
+
+            var is_const = false;
+
+            // Check for: Struct, Func and Enum
+            if (accept(TOKEN_TYPE_DOUBLE_COLON)) {
+                eat(); // ::
+
+                if (accept(TOKEN_TYPE_STRUCT_KEYWORD)) {
+                    eat(); // struct
+                    parse_struct_declaration(current_scope, identifier);
+                    return;
+                } else if (accept(TOKEN_TYPE_ENUM_KEYWORD)) {
+                    eat(); // enum
+                    parse_enum_declaration(current_scope, identifier);
+                    return;
+                } else if (accept(TOKEN_TYPE_PAREN_OPEN)) {
+                    parse_function_declaration(current_scope, identifier);
+                    return;
+                } else {
+                    is_const = true;
+                }
+            }
+
+            parse_variable_declaration(current_scope, identifier, is_const);
+        }
+
+        function parse_variable_declaration(current_scope, identifier, is_const, expected_final_token) {
+            var variable_decl = new VariableDeclaration(identifier);
+            var data_type_name = 'any';
+            var is_data_type_explicit = false;
+            var is_assignment = false;
+            var is_explicitly_uninitialized = false;
+
+            // We tested for TOKEN_TYPE_DOUBLE_COLON in the parse_declaration function
+            if (is_const) {
+                // NOTE(jwwishart) constants should be primitive
+                // and should be able to be type inferred without issue!
+                // TODO(jwwishart) what about assignment from another const?
+                // TODO(jwwishart) is this correct... should a type be able to be specified?
+                variable_decl.variable_type = 'const';
+                is_assignment = true;
+            } else if (accept(TOKEN_TYPE_COLON_EQUALS)) {
+                is_assignment = true;
+                eat(); // :=
+            } else if (accept(TOKEN_TYPE_SINGLE_COLON)) {
+                eat(); // :
+
+                is_data_type_explicit = true;
+
+                // data_type?
+                if (expect(TOKEN_TYPE_IDENTIFIER)) {
+                    data_type_name = peek().text;
+
+                    eat(); // identifier
+
+                    // TODO(jwwishart) does the type exist. Add to scope and program, mark as unknown type
+
+                    if (accept(TOKEN_TYPE_ASSIGNMENT)) {
+                        is_assignment = true;
+                        eat(); // =
+                    }
+                }
+            }
+
+            if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
+                is_explicitly_uninitialized = true;
+
+                eat();
+            }
+
+            if (is_assignment && is_explicitly_uninitialized === false /* fall back to default values */) {
+                // TODO(jwwishart) handle assigned expressions...
+                // - literals
+                // - expressions
+                //   - calculations (only at function scope?)
+                //   - function results( covererd in previous point?)
+                //   - ?
+
+                (function() {
+                    var expressions = parse_expression(current_scope, expected_final_token);
+
+                    if (expressions.length === 0) {
+                        throw new Error("Variable declaration '" + identifier + "' missing initialization value" + JSON.stringify(peek()));
+                    }
+
+                    // TODO(jwwishart) what is can't infer the type?
+                    // TODO(jwwishart) what if expression is NULL!!!
+
+                    var inferred_type = infer_type(expressions);
+
+                    if (is_data_type_explicit) {
+                        if (inferred_type.name === data_type_name) {
+                            // Is Don, is Good!
+                        } else {
+                            throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + data_type_name + "'");
+                        }
+                    }
+
+                    variable_decl.init = expressions;
+                }());
+            } else {
+                if (is_data_type_explicit == false &&
+                    is_assignment &&
+                    is_explicitly_uninitialized === true) 
+                {
+                    throw new Error("You cannot explicitly uninitilize an untyped variable declaration... you must provide a type! " +  JSON.stringify(peek()));
+                }
+
+                // If there is no assignment we essentially add an assignment
+                // for the default expected value for primitive types or null
+                // for anything else (at the moment!)
+                // TODO(jwwishart) should the above be correct? Custom types
+                // should maybe have a DEFAULT value that can be configurable?
+                // in the type definition? or should they just be a default
+                // instance with fields that have default values?
+
+                // TODO(jwwishart) we should grab these from the program scope?
+                // TODO(jwwishart) Handle all primitive types?
+                // TODO(jwwishart) make this a function to handle JUST primitive types!
+                //      -- is_primitive_type
+                //      -- get_primitive_data_type_definition 
+                switch(data_type_name) {
+                    case 'string':
+                    case 'int':
+                    case 'float':
+                    case 'bool':
+                        // Notice we sent NULL through for the value... we will use the data_type default value in this case!
+                        variable_decl.init.push(new Literal(null, get_primitive_data_type_by_name(data_type_name)));
+                        break;
+
+                }
+            }
+
+
+            // TODO(jwwishart) 'const' might need to be assigned to variable_type
+
+            variable_decl.data_type = data_type_name;
+            add_statement(context, current_scope, variable_decl);
+        }
+
+        function parse_struct_declaration(current_scope, identifier) {
+            var decl = new StructDeclaration(identifier, current_scope);
+
+            eat(); // { 
+
+            while(true) {
+                // TODO(jwwishart) this is NOT adequate :oS parsing statements???
+                parse_statement(decl);
+
+                // Break on End of } only!
+// TODO(jwwishart) up to here!!!
+// TODO(jwwishart) up to here!!!
+// TODO(jwwishart) up to here!!!
+// TODO(jwwishart) up to here!!!
+// TODO(jwwishart) up to here!!!
+/*
+
+    Need to look at breaking a declaration out into something that can be called from here
+    or called from variable context... the structure is the same BAR the following:
+    - you can't have const values (or should you?)
+    - you can't have complex expressions only literals for assignments (or can you?)
+    - each line ought to end with a , instead of a semicolon..
+
+    So each declaration should be called as part of a parse_field_declrations or something?
+
+*/
+                if (peek() == null || peek().type == TOKEN_TYPE_BRACE_CLOSE) {
+                    eat(); // }
+                    break;
+                }
+            }
+
+            add_statement(context, current_scope, decl);
+        }
+
+        function parse_enum_declaration(current_scope, identifier) {
+            throw new Error("Enums declarations cannot be passed currently");
+        }
+
+        function parse_function_declaration(current_scope, identifier) {
+            throw new Error("Function declarations cannot be passed currently");
+        }
+
+
+        function parse_expression(current_scope, expected_final_token) {
             var parts = [];
             var token = peek();
+
+            var expected_final_token = expected_final_token || TOKEN_TYPE_SEMICOLON;
 
             // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
             // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
@@ -1245,7 +1337,8 @@ var erg;
 
             eat();
 
-            if (!accept(TOKEN_TYPE_SEMICOLON)) {
+            // TODO(jwwishart) expect??? or loop or expect , or ; depending on context 'expected_final_token'!!!!
+            if (!accept(expected_final_token)) {
                 // TODO(jwwishart) continue the loop
             }
 
@@ -1257,6 +1350,7 @@ var erg;
         }
 
     }());
+
 
 
     // @Ast Nodes -------------------------------------------------------------
@@ -1300,7 +1394,6 @@ var erg;
         // then we are done type inference!
         this.is_resolved = false;
     }
-
 
     function Program() {
         AstNode.call(this, null);
@@ -1363,6 +1456,14 @@ var erg;
         this.identifier = identifier;
         this.variable_decl = variable_decl;
         this.init = init || [];
+    }
+
+    function StructDeclaration(identifier, parent_scope) {
+        Scope.call(this, parent_scope)
+
+        this.identifier = identifier;
+
+        // statements on scope ARE the field declarations
     }
 
 
