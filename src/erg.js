@@ -778,8 +778,24 @@ var erg;
             return tokenizer.peek();
         }
 
-        function eat() {
+        function eat(eat_whitespace) {
             tokenizer.eat();
+
+            while (eat_whitespace === true && peek().type == TOKEN_TYPE_WHITESPACE) {
+                eat();
+            }
+        }
+
+        function expect_and_eat(token_type) {
+            if (expect(token_type)) {
+                eat();
+            }
+        }
+
+        function accept_and_eat(token_type) {
+            if (accept(token_type)) {
+                eat();
+            }
         }
 
         function iterate(func, till) {
@@ -815,11 +831,18 @@ var erg;
             return false; // Not the requested token
         }
 
-        function expect(token_type) {
+        function expect(token_type, ignore_whitespace) {
+            ignore_whitespace = ignore_whitespace || true;
+
             if (peek() === null) {
                 throw new Error("Unexpected end of file. Was expecting: " + JSON.stringify(token_type));
             }
 
+            if (ignore_whitespace) {
+                while(peek().type == TOKEN_TYPE_WHITESPACE) {
+                    eat();
+                }
+            }
 
             if (is_array(token_type)) {
                 var found_match = false;
@@ -844,7 +867,7 @@ var erg;
             return true;
         }
 
-        function add_statement(context, current_scope, statement) {
+        function add_statement(current_scope, statement) {
             current_scope.statements.push(statement);
 
             // TODO(jwwishart) add variable and func identifiers...
@@ -976,41 +999,50 @@ var erg;
             var scope = file;
 
             iterate(function() {
-                parse_scope(scope);
+                parse_file(scope);
+                // REMOVE: parse_scope(scope);
             });
         };
 
-        function parse_scope(current_scope) {
+        function parse_file(current_scope) {
             while (peek() != null) {
-                // {
-                if (accept(TOKEN_TYPE_BRACE_OPEN)) {
-                    eat();
-                    parse_scope(new Scope(current_scope));
-                    continue;
-                }
-
-                // }
-                if (accept(TOKEN_TYPE_BRACE_CLOSE)) {
-                    eat();
-                    return;
-                }
-
-                // Statements
                 parse_statement(current_scope);
-                
-                // TODO(jwwishart) this is circular so it breakd :o(
-                //context.log("PARSER", JSON.stringify(current_scope.statements[current_scope.statements.length - 1]));
             }
         }
 
+        // function parse_scope(current_scope) {
+        //     while (peek() != null) {
+        //         // TODO(jwwishart) this should be a parse_statement_block?
+        //         // {
+        //         if (accept(TOKEN_TYPE_BRACE_OPEN)) {
+        //             eat();
+        //             parse_scope(new Scope(current_scope));
+        //             continue;
+        //         }
+        //         // TODO(jwwishart) this should be a parse_statement_block?
+        //         // }
+        //         if (accept(TOKEN_TYPE_BRACE_CLOSE)) {
+        //             eat();
+        //             return;
+        //         }
+
+        //         // Statements
+        //         parse_statement(current_scope);
+                
+        //         // TODO(jwwishart) this is circular so it breakd :o(
+        //         //context.log("PARSER", JSON.stringify(current_scope.statements[current_scope.statements.length - 1]));
+        //     }
+        // }
+
 
         function parse_statement(current_scope) {
-            if (accept(TOKEN_TYPE_BRACE_OPEN)) {
-                parse_scope(current_scope);
-            }
+            // TODO(jwwishart) below needs a parse_block_statement() function
+            //if (accept(TOKEN_TYPE_BRACE_OPEN)) {
+            //    parse_scope(current_scope);
+            //}
 
             if (accept(TOKEN_TYPE_ASM_BLOCK)) {
-                add_statement(context, current_scope, new AsmBlock(peek().text));
+                add_statement(current_scope, new AsmBlock(peek().text));
                 eat();
                 return;
             }
@@ -1091,7 +1123,7 @@ var erg;
                         // Done! Add statement!
                         statement.init = expressions;
 
-                        add_statement(context, current_scope, statement);
+                        add_statement(current_scope, statement);
                         
                         // TODO(jwwishart) null assignment????
                         // TODO(jwwishart) ensure we have something to assign otherwise this is pointless... i.e. a semicolon after the = is just WRONG!
@@ -1259,17 +1291,42 @@ var erg;
             // TODO(jwwishart) 'const' might need to be assigned to variable_type
 
             variable_decl.data_type = data_type_name;
-            add_statement(context, current_scope, variable_decl);
+            add_statement(current_scope, variable_decl);
+        }
+
+        function parse_field_assignment_expression(current_scope, data_type_name, expected_final_token) {
+            var expressions = parse_expression(current_scope, expected_final_token);
+
+            if (expressions.length === 0) {
+                throw new Error("Field declaration missing initialization value" + JSON.stringify(peek()));
+            }
+
+            // TODO(jwwishart) what is can't infer the type?
+            // TODO(jwwishart) what if expression is NULL!!!
+
+            var inferred_type = infer_type(expressions);
+
+            if (true) { // if (is_data_type_explicit) { // WARNING(jwwishart) true for variables NOT for fields remeber if varibles refactored to use this!
+                if (inferred_type.name === data_type_name) {
+                    // Is Don, is Good!
+                } else {
+                    throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + data_type_name + "'");
+                }
+            }
+
+            return expressions;
         }
 
         function parse_struct_declaration(current_scope, identifier) {
             var decl = new StructDeclaration(identifier, current_scope);
 
-            eat(); // { 
+            expect_and_eat(TOKEN_TYPE_BRACE_OPEN);
 
-            while(true) {
                 // TODO(jwwishart) this is NOT adequate :oS parsing statements???
-                parse_statement(decl);
+                //parse_statement(decl);
+                parse_struct_field_definitions(decl);
+
+                expect_and_eat(TOKEN_TYPE_BRACE_CLOSE);
 
                 // Break on End of } only!
 // TODO(jwwishart) up to here!!!
@@ -1288,13 +1345,85 @@ var erg;
     So each declaration should be called as part of a parse_field_declrations or something?
 
 */
-                if (peek() == null || peek().type == TOKEN_TYPE_BRACE_CLOSE) {
-                    eat(); // }
-                    break;
+            add_statement(current_scope, decl);
+        }
+
+        function parse_struct_field_definitions(current_scope) {
+            while(peek() !== null && peek().type !== TOKEN_TYPE_BRACE_CLOSE) {
+                var identifier = null;
+                var data_type_name = 'any';
+                var is_assignment = false;
+                var is_explicitly_uninitialized = false;
+                var decl;
+
+                if (expect(TOKEN_TYPE_IDENTIFIER)) {
+                    identifier = peek().text;
+                    eat();
+
+                    decl = new FieldDefinition(identifier);
+
+                    var info = get_identifier_declaration_information(current_scope, identifier);
+
+                    if (info != null && info.decl  != null) {
+                        throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+                    }
+
+                    // Parse the declaration
+                    expect_and_eat(TOKEN_TYPE_SINGLE_COLON); // :
+
+                    expect(TOKEN_TYPE_IDENTIFIER);
+
+                    data_type_name = peek().text;
+
+                    eat(); // type identifier
+
+                    if (accept(TOKEN_TYPE_ASSIGNMENT)) {
+                        is_assignment = true;
+                        eat(); // =
+                    }
+
+                    if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
+                        is_explicitly_uninitialized = true;
+
+                        eat();
+                    }
+
+                    decl.data_type = data_type_name;
+
+                    if (is_assignment && is_explicitly_uninitialized == false) {
+                        decl.init = parse_field_assignment_expression(current_scope, data_type_name, TOKEN_TYPE_COMMA);
+                    } else if (is_explicitly_uninitialized == true) {
+                        // TODO(jwwishart) VariableDecls don't seem to do anything with above variable???
+                        // what do we do here?
+                    } else {
+                        // TODO(jwwishart) same as variable declaration code!!!
+                        switch(data_type_name) {
+                            case 'string':
+                            case 'int':
+                            case 'float':
+                            case 'bool':
+                                // Notice we sent NULL through for the value... we will use the data_type default value in this case!
+                                decl.init.push(new Literal(null, get_primitive_data_type_by_name(data_type_name)));
+                                break;
+
+                        }
+                    }
+
+                    add_statement(current_scope, decl);
+                }
+
+                if (accept(TOKEN_TYPE_COMMA)) {
+                    eat(true);
+
+                    if (accept([TOKEN_TYPE_IDENTIFIER, TOKEN_TYPE_BRACE_CLOSE]) === false) {
+                        throw new Error("Expected identifier but got a " + JSON.stringify(peek()));
+                    }
+                }
+
+                if (accept(TOKEN_TYPE_WHITESPACE)) {
+                    eat(true);
                 }
             }
-
-            add_statement(context, current_scope, decl);
         }
 
         function parse_enum_declaration(current_scope, identifier) {
@@ -1450,6 +1579,19 @@ var erg;
         this.is_exported = identifier[0] !== '_';
     }
 
+    function FieldDefinition(identifier, data_type, init) {
+        AstNode.call(this, null);
+
+        this.identifier = identifier;
+        this.data_type = data_type || 'any';
+        this.init = init || [];
+
+        // TODO(jwwishart) provide hidden members that may be accessibel
+        // from methods of the struct.
+        // this.is_exported = identifier[0] !== '_';
+    }
+
+
     function AssignmentStatement(identifier, variable_decl, init) {
         AstNode.call(this, null);
 
@@ -1588,6 +1730,46 @@ var erg;
 
                 result.push("}());\n");
                 return result;
+            }
+
+            // StructDeclaration
+            if (node instanceof StructDeclaration) {
+                (function(){
+                    result.push(prefix + 'var ' + node.identifier + ' = function() {');
+
+                    process_onto_results(node.statements, result);
+
+                    result.push(prefix + '};');
+                }());
+            }
+
+            if (node instanceof FieldDefinition) {
+                (function() {
+                    var value = 'null';
+
+                    if (node.init.length === 1 && node.init[0] instanceof Literal) {
+                        if (node.init[0].value === null) {
+                            if (node.init[0].data_type) {
+                                value = node.init[0].data_type.default_value;
+                            }
+                        } else {
+                            value = node.init[0].value;
+                        }
+
+                        if (value == null) {
+                            value = 'null';
+                        }
+
+                        if (node.init[0].data_type) {
+                            if (node.init[0].data_type.name === 'string') {
+                                value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
+                            }
+                        }
+                        result.push(prefix + 'this.' + node.identifier + ' = ' + value + '; ');
+                    } else {
+                        result.push(prefix + 'this.' + node.identifier + ' = null; ');
+                    }
+                }());
             }
 
 
