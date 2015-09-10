@@ -36,7 +36,38 @@
 
 Person :: struct {
     name : string,
-    age  : int
+    age  : int = 35
 }
 
-me : Person;
+
+Color :: enum {
+    Red,
+    Green,
+    Blue
+}
+
+
+// TODO(jwwishart) What SHOULD? this do? initialized to zero?
+my_enum : Color;
+
+asm { 
+    console.log("Color.Red = " + Color.Red);
+    console.log("Color[0] = " + Color[0]);
+}
+
+me : Person = ---;
+me1 : Person;
+
+you : Person = new Person;
+
+asm { 
+    console.log("ME BEFORE:");
+    console.log(me);
+}
+
+me = new Person;
+
+asm { 
+    console.log("ME AFTER:");
+    console.log(me);
+}
