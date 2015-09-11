@@ -786,13 +786,13 @@ var erg;
         function eat(eat_whitespace) {
             tokenizer.eat();
 
-            while (eat_whitespace === true && peek().type == TOKEN_TYPE_WHITESPACE) {
-                eat();
+            if (eat_whitespace) {
+                eat_whitespace();
             }
         }
 
         function eat_whitespace() {
-            while(peek().type == TOKEN_TYPE_WHITESPACE) {
+            while (peek() !== null && peek().type == TOKEN_TYPE_WHITESPACE) {
                 eat();
             }
         }
@@ -883,16 +883,10 @@ var erg;
 
             // TODO(jwwishart) add variable and func identifiers...
             // TODO(jwwishart) prevent adding duplcates!
-            if (statement instanceof VariableDeclaration) {
-                current_scope.identifiers.push(statement);
-
-                context.program.symbol_info.push(new SymbolInformation(
-                    statement.identifier,
-                    statement,
-                    current_scope));
-            }
-
-            if (statement instanceof StructDeclaration) {
+            if (statement instanceof VariableDeclaration ||
+                statement instanceof StructDeclaration ||
+                statement instanceof FunctionDeclaration)
+            {
                 current_scope.identifiers.push(statement);
 
                 context.program.symbol_info.push(new SymbolInformation(
@@ -904,7 +898,6 @@ var erg;
             // TODO(jwwishart) structure type declaration needs adding to the scope
             // TODO(jwwishart) enum type declaration needs adding to the scope
             // TODO(jwwishart) function type declaration needs adding to the scope
-
         }
 
         function get_primitive_data_type_by_name(name) {
@@ -1048,6 +1041,16 @@ var erg;
             }
         }
 
+        function parse_block(current_scope) {
+            expect_and_eat(TOKEN_TYPE_BRACE_OPEN);
+
+            while(peek() !== null && peek().type != TOKEN_TYPE_BRACE_CLOSE) {
+                parse_statement(current_scope);
+            }
+
+            expect_and_eat(TOKEN_TYPE_BRACE_CLOSE);
+        }
+
         // function parse_scope(current_scope) {
         //     while (peek() != null) {
         //         // TODO(jwwishart) this should be a parse_statement_block?
@@ -1078,6 +1081,8 @@ var erg;
             //if (accept(TOKEN_TYPE_BRACE_OPEN)) {
             //    parse_scope(current_scope);
             //}
+
+            eat_whitespace();
 
             if (accept(TOKEN_TYPE_ASM_BLOCK)) {
                 add_statement(current_scope, new AsmBlock(peek().text));
@@ -1207,7 +1212,7 @@ var erg;
 
             // TODO(jwwishart) error here... if we get here
             // we are not supporting some form of statement...
-            eat();
+            eat_whitespace();
         }
 
         /// Parse Declarations
@@ -1558,9 +1563,85 @@ var erg;
         }
 
         function parse_function_declaration(current_scope, identifier) {
-            throw new Error("Function declarations cannot be passed currently");
+            var decl = new FunctionDeclaration(identifier, current_scope);
+
+            decl.parameters = parse_parameter_list(current_scope);
+
+            if (accept(TOKEN_TYPE_IDENTIFIER)) {
+                var return_type = peek().text;
+                eat(); // return type
+
+                decl.return_type = return_type;
+
+                switch(return_type) {
+                    case 'string':
+                    case 'int':
+                    case 'float':
+                    case 'bool':
+                        // Is Don, Is Good!
+                        break;
+                    default:
+                        throw new Error("Return data type " + return_type + " not yet supported for parameter names... need to re-work the data type system to include primitive and custom types");
+                        break;
+                }
+            }
+
+            // TODO(jwwishart) the block MUST include return statements if the function
+            // have a non-void return type...
+            parse_block(decl);
+
+            add_statement(current_scope, decl);
         }
 
+        function parse_parameter_list(current_scope) {
+            expect_and_eat(TOKEN_TYPE_PAREN_OPEN);
+
+            var results = [];
+
+            while (peek().type !== TOKEN_TYPE_PAREN_CLOSE) {
+                expect(TOKEN_TYPE_IDENTIFIER);
+                var identifier = peek().text;
+
+                eat(); // identifier
+
+                expect_and_eat(TOKEN_TYPE_SINGLE_COLON);
+
+                expect(TOKEN_TYPE_IDENTIFIER);
+
+                var data_type = peek().text;
+                eat();
+
+                var param = new ParameterInfo(identifier, data_type);
+
+                each(results, function(res) {
+                    if (res.identifier === identifier) {
+                        throw new Error("You cannot declare function with the same parameter name twice: Parameter name is: " + identifier + " | " + JSON.stringify(peek()));
+                    }
+                });
+                
+                switch(data_type) {
+                    case 'string':
+                    case 'int':
+                    case 'float':
+                    case 'bool':
+                        // Is Don, Is Good!
+                        break;
+                    default:
+                        throw new Exception("Data Type " + data_type + " not yet supported for parameter names... need to re-work the data type system to include primitive and custom types");
+                        break;
+                }
+
+                if (accept(TOKEN_TYPE_COMMA)) {
+                    eat(); // ,
+                }
+                
+                results.push(param);
+            }
+
+            expect_and_eat(TOKEN_TYPE_PAREN_CLOSE);
+
+            return results;
+        }
 
         function parse_expression(current_scope, expected_final_token) {
             var parts = [];
@@ -1755,6 +1836,26 @@ var erg;
         // statements on scope ARE the field declarations
     }
 
+    function FunctionDeclaration(identifier, parent_scope) {
+        Scope.call(this, parent_scope);
+
+        this.identifier = identifier;
+
+        // statements on scope are the internal function statements
+        this.parameters = [];
+        
+        this.return_type = 'void'; // TODO(jwwishart) void! and assign the 'type' if you could call it that.
+    }
+
+    function ParameterInfo(identifier, data_type) {
+        AstNode.call(this, null);
+
+        this.identifier = identifier;
+        this.data_type = data_type;
+
+        // TODO(jwwishart) default constant value... litearl like a variable declaration
+    }
+
 
     // @Data Types ------------------------------------------------------------
     //
@@ -1918,6 +2019,23 @@ var erg;
                 }());
             }
 */
+
+            if (node instanceof FunctionDeclaration) {
+                (function() {
+                    var params = [];
+
+                    for (var i =0 ; i < node.parameters.length; i++) {
+                        params.push(node.parameters[i].identifier);
+                    }
+
+                    result.push("\n" + prefix + "function " + node.identifier + "(" + params.join(',') + ") {");
+
+                    process_onto_results(node.statements, result);
+
+                    result.push(prefix + "}\n");
+                }());
+            }
+
             // WARNING(jwwishart) this is for structs!!!!!!!!!
             if (node instanceof FieldDefinition) {
                 (function() {

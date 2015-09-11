@@ -1,23 +1,6 @@
 
-// Type Specified - No Assignment (default values assigned)
-type_string : string;   // Should be ''
-type_int    : int;      // Should be 0 (zero)
-type_float  : float;    // Should be 0.0 (zero)
-type_bool   : bool;     // should be false
-type_any    : any;      // should be null
-
-
-// Type Specified - Uninitialized (defaults values assigned ... this
-// JavaScript target would not support this type of construct)
-type_string_explicity_uninitialized : string = ---;
-type_int_explicity_uninitialized    : int = ---;
-type_float_explicity_uninitialized  : float = ---;
-type_bool_explicity_uninitialized   : bool = ---;
-type_any_explicity_uninitialized    : any = ---;
-
-
-// Type Specified - Uninitialized
-num := 15;
-_num := 16;
-num2 : int = 17;
-num2 :: int = 18;
+print :: (message : string) {
+    asm {
+        console.log("print: " + message);
+    }
+}
