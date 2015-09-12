@@ -1,8 +1,6 @@
 /*
     Backlog:
-    - Figure out how to log errors better and clearer... might have
-      to create item writer that avoids recursion.
-    - Sub Scopes!
+    - Logging
 
 */
 
@@ -49,6 +47,11 @@ var erg;
         return type === 'function' || type === 'object' && !!it; // TODO(jwwishart) is.js... why last condition?
     };
 
+    // KUDOS: is.js
+    var is_function = function(it) {
+        return toString.call(it) === '[object Function]' || typeof it === 'function';
+    };
+
     function each(it, callback) {
         var result,
             i,
@@ -58,14 +61,12 @@ var erg;
             return;
         }
         
-        // TODO(jwwishart) test callback is a function!
-        if (!callback || typeof callback !== 'function') {
-            throw new Error('callback is not valid');
+        if (!has_value(callback) || !is_function(callback)) {
+            throw new Error('callback either was not given or it was not passed a function');
         }
 
         if (is_array(it)) {
             for (i = 0; i < it.length; i++) {
-                // TODO(jwwishart) normalize undefined and nulls?
                 result = callback.call(it, it[i], i);
 
                 if (!has_value(result) || result === true) {
@@ -81,7 +82,6 @@ var erg;
         if (is_object(it)) {
             for (key in it) {
                 if (Object.prototype.hasOwnProperty.call(it, key)) {
-                    // TODO(jwwishart) normalize undefined and nulls?
                     result = callback.call(it, it[key], key);
 
                     if (!has_value(result) || result === true) {
@@ -167,6 +167,8 @@ var erg;
         var result = '';
 
         // TODO(jwwishart) in debug dump this ast.
+        // TODO(jwwishart) to dump the ast iterate and remove parents from each scope type...
+        //  so that we don't get circular json issues :oS OR Parse the thing manually.
         var program = new Program();
         var context = new erg.CompilerContext(program, files, options);
 
@@ -219,11 +221,11 @@ var erg;
 
                 return null;
             },
+
             eat: function() {
                 context.log("SCANNER", code[i] + " - " + JSON.stringify(this.peek()));
 
-                // NOTE: Do the line and char stuff when you eat, not 
-                // before!
+                // NOTE: Do the line and char stuff when you eat, not before!
                 if (code[i] === '\n') {
                     line_no++;
                     col_no = first_col - 1; // we will increment by one below so we need to remove that here!
@@ -232,6 +234,7 @@ var erg;
                 i++;
                 col_no++;
             },
+
             get_lexeme: function() {
                 return new Lexeme(filename, line_no, col_no, this.peek());
             }
@@ -243,11 +246,14 @@ var erg;
     //
 
     generate_global_constants('TOKEN_TYPES', [
-        'TOKEN_TYPE_UNKNOWN', // TODO(jwwishart) what? why would we need this... why not throw an exception
+        'TOKEN_TYPE_WHITESPACE',
+        
+        'TOKEN_TYPE_COMMENT_SINGLE_LINE',
+        'TOKEN_TYPE_COMMENT_MULTIPLE_LINE',
+
+        // TODO(jwwishart) cleanup the ordering?
         'TOKEN_TYPE_NULL',
         
-        'TOKEN_TYPE_WHITESPACE',
-        'TOKEN_TYPE_COMMENT_SINGLE_LINE',
 
         'TOKEN_TYPE_IDENTIFIER',
 
@@ -356,6 +362,7 @@ var erg;
 
             while ((c = peek()) !== null) {
                 // Whitespace
+                // TODO(jwwishart) unicode characters?
                 if (/[a-zA-Z0-9_]/gi.test(c) === false) {
                     // eat(); dont eat something that is not suitable
                     break;
@@ -554,8 +561,12 @@ var erg;
 
         // ASSUMPTION(jwwishart) /* are eaten and next c is first char of ...
         // the multiline comment contents
-        function eat_multiline_comments() {
+        function get_multiline_comments() {
+            var results = '/*';
+
             do {
+                results += peek();
+
                 if (c === '/' && move_next() && c === '*') {
                     multilineCommentDepth++;
                     continue;
@@ -572,6 +583,18 @@ var erg;
                     break;
                 }
             }  while(move_next());
+
+            return results + '*/';
+        }
+
+        function get_singleline_comment() {
+            var result = '//';
+
+            while (move_next() && c !== '\r' && c !== '\n') {
+                result += c;
+            }
+
+            return result;
         }
 
         return {
@@ -587,35 +610,39 @@ var erg;
                     var to_return = try_map_char_to_token(c);
                     if (to_return !== null) {
                         // TODO(jwwishart) for now just handle this manually
-                       if (c === ' ' || c === '\t') {
-                            continue;
-                        }
+                        // NOTE: these characters were ignored because they break things...
+                        // we are not going to try and fix them :oS so they don't break... :oS
+                        // the parser should handle them... and include them in the AST... ?
+                        //if (c === ' ' || c === '\t') {
+                        //    continue;
+                        //}
 
                         return to_return;
                     }
 
                     // Single line Comments
                     if (c === '/') {
-                        eat();
+                        token = create_token(TOKEN_TYPE_COMMENT_SINGLE_LINE, '');
 
-                        // TODO(jwwishart) double line comments 
-                        // TODO(jwwishart) NESTED double line comments!!!
+                        eat();
 
                         // Multi-line comments
                         if (peek() === '*') {
                             eat(); // eat and setup c correctly | eat_multiline_comments assumes /* is gone!
                             c = peek();
-                            eat_multiline_comments();
 
-                            continue;
+                            token.type = TOKEN_TYPE_COMMENT_MULTIPLE_LINE;
+                            token.text = get_multiline_comments();
+
+                            return token;
                         }
 
                         // Single-line comments
                         if (peek() === '/') {
-                            // Eat till newline
-                            eat_while_not('\n');
+                            // NOTE(jwwishart) type is correct already!
+                            token.text = get_singleline_comment();
                             
-                            continue;
+                            return token;
                         }
                     }
 
@@ -783,16 +810,22 @@ var erg;
             return tokenizer.peek();
         }
 
-        function eat(eat_whitespace) {
+        // If we eat() we just move to the next valid token... the parse shouldn't have
+        // to worry about whitespace...
+        function eat() {
             tokenizer.eat();
 
-            if (eat_whitespace) {
-                eat_whitespace();
-            }
+            eat_non_important_tokens();
         }
 
-        function eat_whitespace() {
-            while (peek() !== null && peek().type == TOKEN_TYPE_WHITESPACE) {
+        function eat_non_important_tokens() {
+            while (
+                peek() !== null && (
+                    peek().type == TOKEN_TYPE_WHITESPACE ||
+                    peek().type == TOKEN_TYPE_COMMENT_SINGLE_LINE ||
+                    peek().type == TOKEN_TYPE_COMMENT_MULTIPLE_LINE
+                )
+            ){
                 eat();
             }
         }
@@ -806,14 +839,6 @@ var erg;
         function accept_and_eat(token_type) {
             if (accept(token_type)) {
                 eat();
-            }
-        }
-
-        function iterate(func, till) {
-            till = till || null;
-
-            while (tokenizer.peek() !== till) {
-                func();
             }
         }
 
@@ -881,8 +906,8 @@ var erg;
         function add_statement(current_scope, statement) {
             current_scope.statements.push(statement);
 
-            // TODO(jwwishart) add variable and func identifiers...
-            // TODO(jwwishart) prevent adding duplcates!
+            // TODO(jwwishart) should checking for duplicates be done here automatically???
+
             if (statement instanceof VariableDeclaration ||
                 statement instanceof StructDeclaration ||
                 statement instanceof FunctionDeclaration)
@@ -895,9 +920,15 @@ var erg;
                     current_scope));
             }
 
-            // TODO(jwwishart) structure type declaration needs adding to the scope
-            // TODO(jwwishart) enum type declaration needs adding to the scope
-            // TODO(jwwishart) function type declaration needs adding to the scope
+            if (statement instanceof FieldDefinition)
+            {
+                current_scope.identifiers.push(statement);
+
+                context.program.symbol_info.push(new SymbolInformation(
+                    statement.identifier,
+                    statement,
+                    current_scope));
+            }
         }
 
         function get_primitive_data_type_by_name(name) {
@@ -951,28 +982,12 @@ var erg;
             cont.level++;
 
             each(cont.scope.identifiers, function(item) {
-                // Variable Declarations
-                if (item instanceof VariableDeclaration &&
-                    item.identifier === identifier) 
+                if (item.identifier === identifier) 
                 {
                     cont.found = true;
                     cont.decl = item;
 
                     return false; // cancel loop!
-                }
-
-                // Function Declarations
-                // TODO(jwwishart) handle function identifiers
-
-                // Type Declarations
-                // TODO(jwwishart) handle type declarations
-                if (item instanceof StructDeclaration &&
-                    item.identifier === identifier) 
-                {
-                    cont.found = true;
-                    cont.decl = item;
-
-                    return false;
                 }
             });
 
@@ -985,8 +1000,8 @@ var erg;
 
         function infer_type(expressions) {
             if (expressions.length == 1) {
-                // TODO(jwwishart) this if block should not be here, just iterate
-                // the expression parts and determine the types...
+                // TODO(jwwishart) this if block should not be here, just iterate...
+                //  the expression parts and determine the types...
                 if (expressions[0] instanceof Literal) {
                     return expressions[0].data_type;
                 }
@@ -997,6 +1012,14 @@ var erg;
 
         function is_null_literal(expressions) {
             return expressions.length === 1 && expressions[0] instanceof Literal && expressions[0].value === "null" && expressions[0].type == null; // or undefined
+        }
+
+        function get_while_condition(token_to_cancel_on) {
+            if (token_to_cancel_on !== undefined && token_to_cancel_on !== null) {
+                return peek() !== null && peek().type !== token_to_cancel_on;
+            }
+
+            return peek() !== null;
         }
 
         /// Parses tokens and constructs an ast on the program
@@ -1029,14 +1052,16 @@ var erg;
 
             var scope = file;
 
-            iterate(function() {
+            // Move to first important thing!
+            eat_non_important_tokens();
+
+            while (get_while_condition()) {
                 parse_file(scope);
-                // REMOVE: parse_scope(scope);
-            });
+            }
         };
 
         function parse_file(current_scope) {
-            while (peek() != null) {
+            while (get_while_condition()) {
                 parse_statement(current_scope);
             }
         }
@@ -1044,49 +1069,28 @@ var erg;
         function parse_block(current_scope) {
             expect_and_eat(TOKEN_TYPE_BRACE_OPEN);
 
-            while(peek() !== null && peek().type != TOKEN_TYPE_BRACE_CLOSE) {
+            while (get_while_condition(TOKEN_TYPE_BRACE_CLOSE)) {
                 parse_statement(current_scope);
             }
 
             expect_and_eat(TOKEN_TYPE_BRACE_CLOSE);
         }
 
-        // function parse_scope(current_scope) {
-        //     while (peek() != null) {
-        //         // TODO(jwwishart) this should be a parse_statement_block?
-        //         // {
-        //         if (accept(TOKEN_TYPE_BRACE_OPEN)) {
-        //             eat();
-        //             parse_scope(new Scope(current_scope));
-        //             continue;
-        //         }
-        //         // TODO(jwwishart) this should be a parse_statement_block?
-        //         // }
-        //         if (accept(TOKEN_TYPE_BRACE_CLOSE)) {
-        //             eat();
-        //             return;
-        //         }
-
-        //         // Statements
-        //         parse_statement(current_scope);
-                
-        //         // TODO(jwwishart) this is circular so it breakd :o(
-        //         //context.log("PARSER", JSON.stringify(current_scope.statements[current_scope.statements.length - 1]));
-        //     }
-        // }
-
-
         function parse_statement(current_scope) {
-            // TODO(jwwishart) below needs a parse_block_statement() function
-            //if (accept(TOKEN_TYPE_BRACE_OPEN)) {
-            //    parse_scope(current_scope);
-            //}
+            if (accept(TOKEN_TYPE_BRACE_OPEN)) {
+                var new_block = new Scope(current_scope);
+                add_statement(current_scope, new_block);
 
-            eat_whitespace();
+                parse_block(new_block);
+            }
+
 
             if (accept(TOKEN_TYPE_ASM_BLOCK)) {
                 add_statement(current_scope, new AsmBlock(peek().text));
+
                 eat();
+
+                // WARNING: asm block doesn't require final semicolon...
                 return;
             }
 
@@ -1096,18 +1100,9 @@ var erg;
 
                 eat(); // identifier
 
-                // Various Types of Declarations
-                // - variable (done!)
-                // - type (struct) 
-                // - function ??
 
-
-
-                // Variable Declaration (with or without type)
+                // Declarations
                 //
-
-                // TODO(jwwishart) put this into a function...
-                // TODO(jwwishart) put other situations into separate helper functions...
 
                 if (accept([TOKEN_TYPE_SINGLE_COLON,
                             TOKEN_TYPE_COLON_EQUALS,
@@ -1145,7 +1140,7 @@ var erg;
 
                                 eat();
 
-                                expect_and_eat(TOKEN_TYPE_SEMICOLON);
+                                expect_and_eat(TOKEN_TYPE_SEMICOLON); // TODO... we do that later??? Why here?
 
                                 is_type_instantiation = true;
                             }
@@ -1153,7 +1148,7 @@ var erg;
                             info = get_identifier_declaration_information(current_scope, identifier);
 
                             // Constants cannot be re-assigned another value...
-                            if (info.decl instanceof VariableDeclaration &&
+                            if (info && info.decl instanceof VariableDeclaration &&
                                 info.decl.variable_type === 'const') 
                             {
                                 throw new Error("Constant '" + identifier + "' cannot be changed; " + JSON.stringify(info.decl));
@@ -1208,11 +1203,13 @@ var erg;
                         //  the variable type
                     }());
                 }
+
+                accept_and_eat(TOKEN_TYPE_SEMICOLON);
+
+                return;
             }
 
-            // TODO(jwwishart) error here... if we get here
-            // we are not supporting some form of statement...
-            eat_whitespace();
+            throw new Error("unexpected token: " + JSON.stringify(peek()));
         }
 
         /// Parse Declarations
@@ -1227,7 +1224,7 @@ var erg;
         function parse_declaration(current_scope, identifier) {
             var info = get_identifier_declaration_information(current_scope, identifier);
 
-            if (info != null && info.decl  != null) {
+            if (info != null && info.in_current_scope === true && info.decl  != null) {
                 throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
             }
 
@@ -1256,6 +1253,7 @@ var erg;
             parse_variable_declaration(current_scope, identifier, is_const);
         }
 
+        // TODO(jwwishart) this seems to compliated... can it be partially reused for parameters and field definitions?
         function parse_variable_declaration(current_scope, identifier, is_const, expected_final_token) {
             var variable_decl = new VariableDeclaration(identifier);
             var data_type_name = 'any';
@@ -1413,7 +1411,7 @@ var erg;
                 throw new Error("Field declaration missing initialization value" + JSON.stringify(peek()));
             }
 
-            // TODO(jwwishart) what is can't infer the type?
+            // TODO(jwwishart) what if we can't infer the type?
             // TODO(jwwishart) what if expression is NULL!!!
 
             var inferred_type = infer_type(expressions);
@@ -1434,29 +1432,15 @@ var erg;
 
             expect_and_eat(TOKEN_TYPE_BRACE_OPEN);
 
-                // TODO(jwwishart) this is NOT adequate :oS parsing statements???
-                //parse_statement(decl);
-                parse_struct_field_definitions(decl);
+            parse_struct_field_definitions(decl);
 
-                expect_and_eat(TOKEN_TYPE_BRACE_CLOSE);
+            expect_and_eat(TOKEN_TYPE_BRACE_CLOSE);
 
-                // Break on End of } only!
-/*
-
-    Need to look at breaking a declaration out into something that can be called from here
-    or called from variable context... the structure is the same BAR the following:
-    - you can't have const values (or should you?)
-    - you can't have complex expressions only literals for assignments (or can you?)
-    - each line ought to end with a , instead of a semicolon..
-
-    So each declaration should be called as part of a parse_field_declrations or something?
-
-*/
             add_statement(current_scope, decl);
         }
 
         function parse_struct_field_definitions(current_scope) {
-            while(peek() !== null && peek().type !== TOKEN_TYPE_BRACE_CLOSE) {
+            while (get_while_condition(TOKEN_TYPE_BRACE_CLOSE)) {
                 var identifier = null;
                 var data_type_name = 'any';
                 var is_assignment = false;
@@ -1471,7 +1455,7 @@ var erg;
 
                     var info = get_identifier_declaration_information(current_scope, identifier);
 
-                    if (info != null && info.decl  != null) {
+                    if (info != null && info.in_current_scope === true && info.decl  != null) {
                         throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
                     }
 
@@ -1504,6 +1488,8 @@ var erg;
                         // what do we do here?
                     } else {
                         // TODO(jwwishart) same as variable declaration code!!!
+                        // TODO(jwwishart): wrap in function that handles all primitive types and also...
+                        //  knows how to construct a default of a custom type...
                         switch(data_type_name) {
                             case 'string':
                             case 'int':
@@ -1520,15 +1506,11 @@ var erg;
                 }
 
                 if (accept(TOKEN_TYPE_COMMA)) {
-                    eat(true);
+                    eat(); // ,
 
                     if (accept([TOKEN_TYPE_IDENTIFIER, TOKEN_TYPE_BRACE_CLOSE]) === false) {
                         throw new Error("Expected identifier but got a " + JSON.stringify(peek()));
                     }
-                }
-
-                if (accept(TOKEN_TYPE_WHITESPACE)) {
-                    eat(true);
                 }
             }
         }
@@ -1536,10 +1518,13 @@ var erg;
         function parse_enum_declaration(current_scope, identifier) {
             var decl = new EnumDeclaration(identifier, current_scope);
             var i = 0;
+
             expect_and_eat(TOKEN_TYPE_BRACE_OPEN);
 
-            // TODO: Parse enum identifiers
-            while(peek() !== null && peek().type !== TOKEN_TYPE_BRACE_CLOSE) {
+            // TODO: Parse enum identifiers PROPERLY (i.e. they can have default values...
+            //  assigned which ought to update 'i' above to the assigned value... also can only...
+            //  be integers... nothing else!
+            while (get_while_condition(TOKEN_TYPE_BRACE_CLOSE)) {
                 if (expect(TOKEN_TYPE_IDENTIFIER)) {
                     // TODO(jwwiishart) remember you cant instantiate an enum... only
                     // create a variable that takes that type (it is an int in the end!
@@ -1550,16 +1535,12 @@ var erg;
                     eat();
                 }
 
-                eat_whitespace();
                 accept_and_eat(TOKEN_TYPE_COMMA);
-                eat_whitespace();
             }
 
             expect_and_eat(TOKEN_TYPE_BRACE_CLOSE);
 
             add_statement(current_scope, decl);
-
-            // throw new Error("Enums declarations cannot be passed currently");
         }
 
         function parse_function_declaration(current_scope, identifier) {
@@ -1573,6 +1554,7 @@ var erg;
 
                 decl.return_type = return_type;
 
+                // TODO(jwwishart) duplicate code alert ???
                 switch(return_type) {
                     case 'string':
                     case 'int':
@@ -1586,8 +1568,7 @@ var erg;
                 }
             }
 
-            // TODO(jwwishart) the block MUST include return statements if the function
-            // have a non-void return type...
+            // TODO(jwwishart) non-void result? then 'return' MUST be provided
             parse_block(decl);
 
             add_statement(current_scope, decl);
@@ -1598,7 +1579,7 @@ var erg;
 
             var results = [];
 
-            while (peek().type !== TOKEN_TYPE_PAREN_CLOSE) {
+            while (get_while_condition(TOKEN_TYPE_PAREN_CLOSE)) {
                 expect(TOKEN_TYPE_IDENTIFIER);
                 var identifier = peek().text;
 
@@ -1649,16 +1630,13 @@ var erg;
 
             var expected_final_token = expected_final_token || TOKEN_TYPE_SEMICOLON;
 
-            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
-            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
-            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
-            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
-            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
-            // TODO(jwwishart) this whole things should be a loop UNTIL the semicolon!
+            // TODO(jwwishart) when is an expression ended? semicolon, no operator followed by...
+            //  an identifier? how to detect missing semicolons essentially.
 
             // Literals
             //
 
+            // TODO(jwwishart) this code should be able to be some by some helper function!
             if (accept(TOKEN_TYPE_STRING_LITERAL)) {
                 parts.push(new Literal(token.text, get_primitive_data_type_by_name('string')));
             } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
@@ -1741,7 +1719,10 @@ var erg;
 
         this.files = [];
         this.types = [
-            // NOTE(jwwishart) the default value is RAW as we 
+            // NOTE(jwwishart) the default value is RAW
+            // TODO(jwwishart) these should be: identifiers in program scope and should have full...
+            //  type declarations behind them: eg: Any, String, Integer, Float, Boolean etc...
+            //  and should be added to the program when here as standard types... How to do that?
             new DataType('any',     'null',  true),
             new DataType('string',  '',      true),
             new DataType('int',     '0',     true),
@@ -1770,8 +1751,6 @@ var erg;
         this.raw_code = raw_code;
     }
     
-
-
     ///
     /// Arguments
     ///     identifier      : the name of the variable
@@ -1860,6 +1839,7 @@ var erg;
     // @Data Types ------------------------------------------------------------
     //
 
+    // TODO(jwwishart) should this be called PrimitiveType?
     function DataType(name, default_value, is_builtin) {
         if (default_value === undefined) {
             default_value = 'null';
@@ -1978,7 +1958,7 @@ var erg;
             if (node instanceof Scope) {
                 result.push("\n;(function() {");
 
-                // TODO(jwwishart) parse statements...
+                process_onto_results(node.statements, result);
 
                 result.push("}());\n");
                 return result;
@@ -2010,15 +1990,6 @@ var erg;
                     result.push('}(' + node.identifier + '));');
                 }());
             }
-
-/*            if (node instanceof EnumFieldDefinition) {
-                (function() {
-                    results.push(prefix +
-                    result.push(prefix + '\'' + node.identifier + '\': ' + node.init[0].value.toString() + ",");
-                    result.push(prefix + '\'' + node.init[0].value.toString() +  '\': \'' + node.identifier + '\',');
-                }());
-            }
-*/
 
             if (node instanceof FunctionDeclaration) {
                 (function() {
@@ -2122,10 +2093,6 @@ var erg;
             return result;
         }
 
-
-
-
     }());
-
 
 }(this));

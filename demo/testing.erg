@@ -1,6 +1,110 @@
 
+asm {
+    console.log('this asm block has a semicolon after it!');
+}
+
+
+
+/*
+
+*/
+
+//filename := #filename;
+
+type_string : string;   // Should be ''
+type_int    : int;      // Should be 0 (zero)
+type_float  : float;    // Should be 0.0 (zero)
+type_bool   : bool;     // should be false
+type_any    : any;      // should be null
+
+{
+    type_string:= 124;
+}
+
+// Type Specified - Uninitialized (defaults values assigned ... this
+// JavaScript target would not support this type of construct)
+type_string_explicity_uninitialized : string = ---;
+type_int_explicity_uninitialized    : int = ---;
+type_float_explicity_uninitialized  : float = ---;
+type_bool_explicity_uninitialized   : bool = ---;
+type_any_explicity_uninitialized    : any = ---;
+
+
+// Type Specified - Initialized
+type_string_assigned : string = "Hello World";
+type_string_assigned2 : string = "Don't Sweat the single Quotes";
+type_int_assigned : int = 256;
+type_float_assigned : float = 1.5670
+type_bool_assigned : bool = true;
+
+// Type Not Specified - Initialized
+no_type_string_init := "Hello World";
+no_type_string_init2 := "Don't Sweat the single Quotes";
+no_type_int_init := 256;
+no_type_float_init := 1.5670
+no_type_bool_init := true;
+
+
+// Constants
+const1 :: 15;
+const2 :: "This is great!";
+
+
+// Re-Assignment
+type_string = "Welcome";
+type_int    = 1234;
+type_float  = 1234.5678;
+type_bool   = true;
+type_any    = "I'll just set as a string for the moment!";
+type_any    = null;
+
+
+// Re-Assignment of any type to an 'any' type
+type_any = "welcome home";
+type_any = 1;
+type_any = 1.234;
+type_any = true;
+
 print :: (message : string) {
     asm {
         console.log("print: " + message);
     }
+}
+
+Person :: struct {
+    name : string,
+    age  : int = 35,
+}
+
+
+Color :: enum {
+    Red,
+    Green,
+    Blue
+}
+
+
+// TODO(jwwishart) What SHOULD? this do? initialized to zero?
+my_enum : Color;
+
+asm { 
+    console.log("Color.Red = " + Color.Red);
+    console.log("Color[0] = " + Color[0]);
+}
+
+me : Person = ---;
+me1 : Person;
+
+you : Person = new Person;
+
+asm { 
+    console.log("ME BEFORE:");
+    console.log(me);
+}
+
+me = new Person;
+
+asm { 
+    console.log("ME AFTER:");
+    console.log(me);
 }
