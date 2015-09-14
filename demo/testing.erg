@@ -1,15 +1,17 @@
 
+print :: (message : string) {
+    asm {
+        console.log("print: " + message);
+    }
+}
+
 asm {
-    console.log('this asm block has a semicolon after it!');
+    console.log('asm blocks should not have a semicolon after it!');
 }
 
 
-
-/*
-
-*/
-
-//filename := #filename;
+// The directive 'filename' inserts the filename
+// filename := #filename;
 
 type_string : string;   // Should be ''
 type_int    : int;      // Should be 0 (zero)
@@ -17,9 +19,15 @@ type_float  : float;    // Should be 0.0 (zero)
 type_bool   : bool;     // should be false
 type_any    : any;      // should be null
 
+type_string = "testing";
+
 {
     type_string:= 124;
+    print(type_string);
 }
+
+print(type_string); // should not be 124
+
 
 // Type Specified - Uninitialized (defaults values assigned ... this
 // JavaScript target would not support this type of construct)
@@ -49,7 +57,6 @@ no_type_bool_init := true;
 const1 :: 15;
 const2 :: "This is great!";
 
-
 // Re-Assignment
 type_string = "Welcome";
 type_int    = 1234;
@@ -65,11 +72,13 @@ type_any = 1;
 type_any = 1.234;
 type_any = true;
 
-print :: (message : string) {
-    asm {
-        console.log("print: " + message);
-    }
+
+
+print_message :: () {
+    print("Hello World");
 }
+
+print_message();
 
 Person :: struct {
     name : string,
@@ -85,6 +94,7 @@ Color :: enum {
 
 
 // TODO(jwwishart) What SHOULD? this do? initialized to zero?
+
 my_enum : Color;
 
 asm { 

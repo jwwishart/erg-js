@@ -1,6 +1,7 @@
 /*
     Backlog:
     - Logging
+    - Make sure you can't assign to an enum! :o)
 
 */
 
@@ -120,11 +121,9 @@ var erg;
     var CompilerContext = function(program, files, options) {
         this.program = program;
         this.files = files;
-        // {
-        //      target: 'es6' // allows const etc.
-        // }
+        
         this.options = {
-            target: 'es5'
+            target: options.target || 'es5'
         };
 
 
@@ -171,6 +170,8 @@ var erg;
         //  so that we don't get circular json issues :oS OR Parse the thing manually.
         var program = new Program();
         var context = new erg.CompilerContext(program, files, options);
+
+        console.log(context);
 
         each(files, function(code, filename) {
             // Set current file information to context
@@ -1112,11 +1113,24 @@ var erg;
                 }
 
 
+                // Function Execution
+                //
+
+                if (accept(TOKEN_TYPE_PAREN_OPEN)) {
+                    parse_function_call(current_scope, identifier);
+                }
+
+
                 // Assignment
                 //
 
                 if (accept(TOKEN_TYPE_ASSIGNMENT)) {
                     eat(); // =
+
+                    // TODO(jwwishart) could be assigned a function expression or literals or ...
+                    //  expression statements (1 + 12 - result_of_func(15 + 55, "hello"))
+                    //  which means we need to handle binary expressions, unary expressions
+                    //  and function call results etc...
 
                     (function() {
                         var is_type_instantiation = false;
@@ -1624,6 +1638,46 @@ var erg;
             return results;
         }
 
+        // TODO(jwwishart) this should be in statement OR expression position as calls can return values
+        function parse_function_call(current_scope, identifier) {
+            var call = new FunctionCall(identifier);
+
+            /*
+                - verify that the function exists (identifier exists representation is a function declaration or found imported)
+                - parse argument expressions (comma separated)
+
+             */
+
+            expect_and_eat(TOKEN_TYPE_PAREN_OPEN);
+
+            call.args = parse_function_call_arguments(current_scope, identifier);
+
+            expect_and_eat(TOKEN_TYPE_PAREN_CLOSE);
+            expect_and_eat(TOKEN_TYPE_SEMICOLON);
+
+            add_statement(current_scope, call);
+        }
+
+        function parse_function_call_arguments(current_scope, identifier) {
+            // TODO(jwwishart) this shoudl all be in parse_expressions...
+            // literal
+            // variable identifier
+            // function identifier :oS
+            // expression
+            // complex expressions (function call results, structure references or namespaced member structure info.);
+            var results = [];
+
+            do {
+                if (accept(TOKEN_TYPE_PAREN_CLOSE)) {
+                    break;
+                }
+
+                results.push(parse_expression(current_scope, TOKEN_TYPE_COMMA));
+            } while (accept(TOKEN_TYPE_COMMA));
+
+            return results;
+        }
+
         function parse_expression(current_scope, expected_final_token) {
             var parts = [];
             var token = peek();
@@ -1637,7 +1691,10 @@ var erg;
             //
 
             // TODO(jwwishart) this code should be able to be some by some helper function!
-            if (accept(TOKEN_TYPE_STRING_LITERAL)) {
+            if (accept(TOKEN_TYPE_IDENTIFIER)) {
+                // TODO(jwwishart) check that the identifier exists, is the right type etc!!!
+                parts.push(new Identifier(token.text));
+            } else if (accept(TOKEN_TYPE_STRING_LITERAL)) {
                 parts.push(new Literal(token.text, get_primitive_data_type_by_name('string')));
             } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
                 parts.push(new Literal(token.text, get_primitive_data_type_by_name('bool')));
@@ -1835,6 +1892,13 @@ var erg;
         // TODO(jwwishart) default constant value... litearl like a variable declaration
     }
 
+    function FunctionCall(identifier) {
+        AstNode.call(this, null);
+
+        this.identifier = identifier;
+        this.args = [];
+    }
+
 
     // @Data Types ------------------------------------------------------------
     //
@@ -1857,6 +1921,10 @@ var erg;
     function Literal(value, data_type) {
         this.value = value;
         this.data_type = data_type;
+    }
+
+    function Identifier(identifier) {
+        this.identifier = identifier;
     }
 
     function TypeInstantiation(type_name) {
@@ -1885,19 +1953,6 @@ var erg;
         //
 
 
-        function determine_prefix(current_scope) {
-            var prefix = '  ';
-            var tmpScope = current_scope;
-
-            // 
-            while(tmpScope !== undefined) {
-                prefix += '  ';
-                tmpScope = tmpScope.parent;
-            }
-
-            return prefix;
-        }
-
         function get_date() {
             var date = new Date();
 
@@ -1905,12 +1960,22 @@ var erg;
         }
 
 
-        function process_onto_results(items, result) {
+        function process_onto_results(items, result, level) {
             each(items, function(item, i) {
-                each(process_ast(item), function(res) {
+                each(process_ast(item, level), function(res) {
                     result.push(res);
                 });
             });
+        }
+
+        function determine_prefix(level) {
+            var result = '';
+
+            for (var i = 0; i < level; i++) {
+                result += '    ';
+            }
+
+            return result;
         }
 
         // Process Functions
@@ -1918,19 +1983,27 @@ var erg;
 
         // WARNING: assume here that all type information is allll goood! we should have
         // handled that during parsing or type inference or something else!
-        function process_ast(node) {
+        function process_ast(node, level) {
+            level = level == null ? "0" : level;
+            var is_es6 = context.options.target === 'node' || context.options.target === 'es6';
+            var the_var =  is_es6 ? 'let ' : 'var ';
             var result = [];
+            var prefix = determine_prefix(level);
 
-            var prefix = determine_prefix(node);
+            function push(text) {
+                result.push(prefix + text);
+            }
 
             // Program
             //
 
             if (node instanceof Program) {
-                result.push('// Generated: ' + get_date());
+                push('// Generated: ' + get_date());
+
+                push('\n"use strict";\n'); // Required for 'let' in node v4+ code output
 
                 // Process Files
-                process_onto_results(node.files, result);
+                process_onto_results(node.files, result, level);
 
                 return result;
             }
@@ -1939,11 +2012,11 @@ var erg;
             //
 
             if (node instanceof File) {
-                result.push('// File Start: ' + node.filename);
+                push('// File Start: ' + node.filename);
 
-                process_onto_results(node.statements, result);
+                process_onto_results(node.statements, result, level);
 
-                result.push('// File End: ' + node.filename);
+                push('// File End: ' + node.filename);
                 return result;
             }
 
@@ -1951,43 +2024,79 @@ var erg;
             // TODO(jwwishart) block statements need to be processed...
             //     BEFORE we do standard Scope objects!
 
+            if (node instanceof Literal) {
+                var literal_result = null;
+
+                // NOTE: inline, NOT prefixed!
+                (function() {
+                    var value = node.value;
+
+                    if (node.data_type) {
+                        if (node.data_type.name === 'string') {
+                            value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
+                        }
+                    }
+
+                    literal_result = value;
+                }());
+
+                return literal_result;
+            }
+
+            if (node instanceof Identifier) {
+                return node.identifier;
+            }
+
 
             // Scope
             //
 
             if (node instanceof Scope) {
-                result.push("\n;(function() {");
+                if (is_es6) {
+                    push("\n{");
+                } else {
+                    push("\n;(function() {");
+                }
 
-                process_onto_results(node.statements, result);
+                process_onto_results(node.statements, result, level + 1);
 
-                result.push("}());\n");
+                if (is_es6) {
+                    push("}\n");
+                } else {
+                    push("}());\n");
+                }
+
                 return result;
             }
 
             // StructDeclaration
             if (node instanceof StructDeclaration) {
                 (function(){
-                    result.push(prefix + 'var ' + node.identifier + ' = function() {');
+                    result.push("\n" + the_var + node.identifier + ' = function() {');
 
-                    process_onto_results(node.statements, result);
+                    process_onto_results(node.statements, result, level + 1);
 
-                    result.push(prefix + '};');
+                    result.push('};\n');
                 }());
             }
 
             // EnumDeclaration
             if (node instanceof EnumDeclaration) {
                 (function(){
-                    result.push(prefix + 'var ' + node.identifier + ' = {};');
-                    result.push('(function(e) {');
+                    push(the_var + node.identifier + ' = {};');
+                    push('(function(e) {');
+
+                    prefix = determine_prefix(level + 1);
 
                     for (var i = 0; i < node.statements.length; i++) {
-                        result.push(prefix + "e[e['" + node.statements[i].identifier + "'] = " + node.statements[i].init[0].value.toString() + "] = '" + node.statements[i].identifier + "';");
+                        push("e[e['" + node.statements[i].identifier + "'] = " + node.statements[i].init[0].value.toString() + "] = '" + node.statements[i].identifier + "';");
                     }
 
-                    process_onto_results(node.statements, result);
+                    prefix = determine_prefix(level - 1);
 
-                    result.push('}(' + node.identifier + '));');
+                    process_onto_results(node.statements, result, level + 1);
+
+                    push('}(' + node.identifier + '));\n');
                 }());
             }
 
@@ -1999,11 +2108,29 @@ var erg;
                         params.push(node.parameters[i].identifier);
                     }
 
-                    result.push("\n" + prefix + "function " + node.identifier + "(" + params.join(',') + ") {");
+                    push("\n" + "function " + node.identifier + "(" + params.join(',') + ") {");
 
-                    process_onto_results(node.statements, result);
+                    process_onto_results(node.statements, result, level + 1);
 
-                    result.push(prefix + "}\n");
+                    push("}\n");
+                }());
+            }
+
+            if (node instanceof FunctionCall) {
+                (function() {
+                    var build = node.identifier + "(";
+
+                    for (var i = 0; i < node.args.length; i++) {
+                        // TODO(jwwishart) we only support single token expressions currently ...
+                        //  for each argument
+                        build += process_ast(node.args[i][0], null);
+
+                        if (i + 1 < node.args.length) {
+                            build += ', ';
+                        }
+                    }
+
+                    push(build += ");");
                 }());
             }
 
@@ -2030,9 +2157,9 @@ var erg;
                                 value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
                             }
                         }
-                        result.push(prefix + 'this.' + node.identifier + ' = ' + value + '; ');
+                        push('this.' + node.identifier + ' = ' + value + '; ');
                     } else {
-                        result.push(prefix + 'this.' + node.identifier + ' = null; ');
+                        push('this.' + node.identifier + ' = null; ');
                     }
                 }());
             }
@@ -2041,6 +2168,8 @@ var erg;
             // VariableDeclaration
             if (node instanceof VariableDeclaration || node instanceof AssignmentStatement) {
                 (function() {
+                    var the_const = is_es6 ? 'const ' : '';
+
                     var value = 'null';
                     var is_decl = node instanceof VariableDeclaration;
 
@@ -2064,30 +2193,35 @@ var erg;
                         }
 
                         var note = '';
-                        if (node.variable_type === 'const') {
+                        var is_const = node.variable_type === 'const';
+                        if (is_const) {
                             note = ' // const';
                         }
 
-                        result.push(prefix + (is_decl ? 'var ' : '') + node.identifier + ' = ' + value + ';' + note);
+                        if (is_const && is_es6) {
+                            push((is_decl ? the_const : '') + node.identifier + ' = ' + value + ';' + note);
+                        } else {
+                            push((is_decl ? the_var : '') + node.identifier + ' = ' + value + ';' + note);
+                        }
                         // TODO(jwwishart) handle further expressions
                     } else if (node.init.length === 1 && node.init[0] instanceof TypeInstantiation) {
-                        result.push(prefix + (is_decl ? 'var ' : '') + node.identifier + ' = new ' + node.init[0].type_name + ';');
+                        push((is_decl ? the_var : '') + node.identifier + ' = new ' + node.init[0].type_name + ';');
                     } else {
                         // TODO(jwwishart) assignment to a const not allowed!)
                         if (node.variable_type === 'const') {
                             throw new Error("Constant declaration must be initialized:" + JSON.stringify(node));
                         }
 
-                        result.push(prefix + 'var ' + node.identifier + ' = null;');
+                        push(the_var + node.identifier + ' = null;');
                     }
                 }());
             }
 
-            // Asm Blogk
+            // Asm Block
             if (node instanceof AsmBlock)  {
-                result.push("\n// RAW ASM OUTPUT START (javascript -------------------------\n");
-                result.push(node.raw_code);
-                result.push("\n// RAW ASM OUTPUT END (javascript) --------------------------\n");
+                push("\n\n// RAW ASM OUTPUT START (javascript) -------------------------");
+                push(node.raw_code);
+                push("\n// RAW ASM OUTPUT END (javascript) --------------------------\n\n");
             }
 
             return result;

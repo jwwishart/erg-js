@@ -5,7 +5,7 @@ var path = require('path');
 var erg = require('../src/erg.js');
 var dir = __dirname;
 
-console.log('ergjs | (C) 2015 Justin Wishart - Version 0.0.2\n');
+console.log('ergjs | (C) 2015 Justin Wishart - Version 0.0.3\n');
 
 
 function getFileContents(path) {
@@ -34,7 +34,12 @@ if (toCompile.length > 0) {
 
     var input_filename = '.erg';
 
-    var output = erg.compile({input_filename: toCompile[0].contents});
+    var output = erg.compile({
+        input_filename: toCompile[0].contents
+    },{
+        target: 'node' // TODO(jwwishart): this is v4+ what about node-legacy ?
+    });
+    
     var newFilename =  filename + '.js';
     
     writeJavaScript(newFilename, output);
