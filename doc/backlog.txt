@@ -1,0 +1,45 @@
+Backlog
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Variables ---
+- String escape characters
+- multiple line here strings style stuff.
+- 
+
+Structs ---
+- 
+
+Function ---
+- multiple arguments
+- any type can be parsed
+- argument expressions evaluated (after general expression parsing done)
+- returning reuslts
+- multiple return results.
+
+
+Syntax and Keywords ---
+- defer
+    x function calls only for statements
+    - need to separate declarations and identifiers
+      so that they are outside the try :oS (function
+      identifiers must be outside... variables might be fine??? 
+- lambda's
+- closures
+- using statement (any context: program, file,  function/block etc... for/if/etc blocks
+
+
+Compiler Functionality ---
+- type inference
+- type checking
+- es6 classes for structs?
+- dependency system
+- out of order type inference etc...
+
+
+Modules ---
+- a module should be a folder of erg files that should be compiled into one file or brought into the full file
+- If you want to compile a program that includes multiple modules you should either have to specify the start file or have a main.erg file which is the start point for the application to build from. 
+- Only imported modules or modules imported along the way will be included in the final build
+- compiler options should allow specification that modules can be complied into a single file per module or into the whole application (1 file) or as separate files? How you would bring them together is another question in that last case.
+- when building modules a module-exports.json file should be created which contains all exports for easy importing... it should be quick to load this into the compiler into the AST structure so that we don't have to parse the files again. a last-build.json file could have timestamps of the last time the files were compiled and whether we need to compiled them agian or not.
+- 

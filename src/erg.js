@@ -95,6 +95,16 @@ var erg;
         }
     }
 
+    function array_copy_and_reverse(arr) {
+        var result = [];
+
+        for (var i = arr.length - 1; i >=0; i--) {
+            result.push(arr[i]);
+        }
+
+        return result;
+    }
+
     function generate_global_constants(setName, arr) {
         if (!erg._global_constants) {
             erg._global_constants = [];
@@ -1078,6 +1088,33 @@ var erg;
         }
 
         function parse_statement(current_scope) {
+            if (accept(TOKEN_TYPE_KEYWORD_DEFER)) {
+                eat(); // defer
+            
+                // Function Execution is only thing supported!
+                if (expect(TOKEN_TYPE_IDENTIFIER)) {
+                    (function() {
+                        var token = peek();
+                        var identifier = token.text;
+
+                        eat(); // identifier
+
+                        if (expect(TOKEN_TYPE_PAREN_OPEN)) {
+                            var fake_scope = {
+                                statements: []
+                            };
+
+                            // This handles the parents and arguments etc...
+                            parse_function_call(fake_scope, identifier);
+
+                            current_scope.deferreds.push(fake_scope.statements[0]);
+                        }
+                    }());
+
+                    return;
+                }
+            }
+
             if (accept(TOKEN_TYPE_BRACE_OPEN)) {
                 var new_block = new Scope(current_scope);
                 add_statement(current_scope, new_block);
@@ -1738,7 +1775,7 @@ var erg;
         this.parent = parent; // only need to go UP the scope, not down...
         
         this.statements = [];
-        this.deferred = [];
+        this.deferreds = [];
 
         this.types = [];        // enum, structs (built in types if on program)
         this.identifiers = [];  // function and variable
@@ -1994,6 +2031,47 @@ var erg;
                 result.push(prefix + text);
             }
 
+            function deferred_start(node, increase) {
+                var deferreds_found = node.deferreds && node.deferreds.length > 0;
+
+                if (deferreds_found) {
+                    if (increase) {
+                        level++;
+
+                        prefix = determine_prefix(level);
+                    }
+
+                    push("try {");
+
+                    return true;
+                }
+
+                return false;
+            }
+
+            function deferred_end(node, decrease) {
+                var deferreds_found = node.deferreds && node.deferreds.length > 0;
+                
+                if (deferreds_found) {
+                    
+                    push("} catch (e) { ");
+                    push("} finally { ");
+
+                    process_onto_results(array_copy_and_reverse(node.deferreds), result, level + 1);
+
+                    push("}");
+
+                    if (decrease) {
+                        level--;
+                        prefix = determine_prefix(level);
+                    }
+
+                    return true;
+                }
+
+                return false;
+            }
+
             // Program
             //
 
@@ -2001,6 +2079,10 @@ var erg;
                 push('// Generated: ' + get_date());
 
                 push('\n"use strict";\n'); // Required for 'let' in node v4+ code output
+
+
+                // TODO(jwwishart) remove out into default includes.... 
+                push("function print(message) { console.log(message); }\n");
 
                 // Process Files
                 process_onto_results(node.files, result, level);
@@ -2012,11 +2094,19 @@ var erg;
             //
 
             if (node instanceof File) {
-                push('// File Start: ' + node.filename);
+                (function() {
+                    push('// File Start: ' + node.filename);
 
-                process_onto_results(node.statements, result, level);
+                    var increase_level = deferred_start(node);
 
-                push('// File End: ' + node.filename);
+                    // In this case we DON't want to increate the try/catch, but the contents
+                    // below must if we had deferred statements
+                    process_onto_results(node.statements, result, level + increase_level ? 1 : 0);
+
+                    deferred_end(node);
+
+                    push('// File End: ' + node.filename);
+                }());
                 return result;
             }
 
@@ -2053,17 +2143,25 @@ var erg;
 
             if (node instanceof Scope) {
                 if (is_es6) {
-                    push("\n{");
+                    push("\n");
+                    push("{");
                 } else {
-                    push("\n;(function() {");
+                    push("\n");
+                    push(";(function() {");
                 }
+
+                deferred_start(node, true);
 
                 process_onto_results(node.statements, result, level + 1);
 
+                deferred_end(node, true);
+
                 if (is_es6) {
-                    push("}\n");
+                    push("}");
+                    push("\n");
                 } else {
-                    push("}());\n");
+                    push("}());");
+                    push("\n");
                 }
 
                 return result;
@@ -2108,9 +2206,14 @@ var erg;
                         params.push(node.parameters[i].identifier);
                     }
 
-                    push("\n" + "function " + node.identifier + "(" + params.join(',') + ") {");
+                    push("\n");
+                    push("function " + node.identifier + "(" + params.join(',') + ") {");
+
+                    deferred_start(node, true);
 
                     process_onto_results(node.statements, result, level + 1);
+
+                    deferred_end(node, true);
 
                     push("}\n");
                 }());

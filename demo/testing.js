@@ -1,15 +1,16 @@
-// Generated: 2015-9-14 22:25
+// Generated: 2015-9-15 21:14
 
 "use strict";
 
 // File Start: input_filename
 
 function print(message) {
+    const prefix = 'PRINT: '; // const
     
 
 // RAW ASM OUTPUT START (javascript) -------------------------
      
-        console.log("print: " + message);
+        console.log(prefix + message);
     
     
 // RAW ASM OUTPUT END (javascript) --------------------------

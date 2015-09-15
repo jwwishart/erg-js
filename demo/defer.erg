@@ -7,6 +7,7 @@ defer print("The end of defer.erg");
 
 something :: () {
     print("something() start ---------");
+    
     print("one");
     print("two");
     print("three");

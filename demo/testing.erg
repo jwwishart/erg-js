@@ -1,10 +1,3 @@
-
-print :: (message : string) {
-    asm {
-        console.log("print: " + message);
-    }
-}
-
 asm {
     console.log('asm blocks should not have a semicolon after it!');
 }
