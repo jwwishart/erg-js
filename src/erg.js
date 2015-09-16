@@ -850,7 +850,10 @@ var erg;
         function accept_and_eat(token_type) {
             if (accept(token_type)) {
                 eat();
+                return true;
             }
+
+            return false;
         }
 
         function accept(token_type) {
@@ -992,15 +995,30 @@ var erg;
 
             cont.level++;
 
-            each(cont.scope.identifiers, function(item) {
-                if (item.identifier === identifier) 
-                {
-                    cont.found = true;
-                    cont.decl = item;
+            // TODO(jwwishart) test that you cant declare a variable that is the same... 
+            //  name as a parameter name of the function decl
+            if (cont.scope instanceof FunctionDeclaration) {
+                each(cont.scope.parameters, function(item) {
+                    if (item.identifier === identifier)  {
+                        cont.found = true;
+                        cont.decl = item;
 
-                    return false; // cancel loop!
-                }
-            });
+                        return false; // cancel loop!
+                    }
+                });
+            }
+
+            if (cont.found === false) {
+                each(cont.scope.identifiers, function(item) {
+                    if (item.identifier === identifier) 
+                    {
+                        cont.found = true;
+                        cont.decl = item;
+
+                        return false; // cancel loop!
+                    }
+                });
+            }
 
             if (!cont.found) {
                 cont.scope = cont.scope.parent;
@@ -1305,7 +1323,7 @@ var erg;
         }
 
         // TODO(jwwishart) this seems to compliated... can it be partially reused for parameters and field definitions?
-        function parse_variable_declaration(current_scope, identifier, is_const, expected_final_token) {
+        function parse_variable_declaration(current_scope, identifier, is_const) {
             var variable_decl = new VariableDeclaration(identifier);
             var data_type_name = 'any';
             var is_data_type_explicit = false;
@@ -1385,7 +1403,7 @@ var erg;
                 //   - ?
 
                 (function() {
-                    var expressions = parse_expression(current_scope, expected_final_token);
+                    var expressions = parse_expression(current_scope);
 
                     if (expressions.length === 0) {
                         throw new Error("Variable declaration '" + identifier + "' missing initialization value" + JSON.stringify(peek()));
@@ -1456,7 +1474,7 @@ var erg;
         }
 
         function parse_field_assignment_expression(current_scope, data_type_name, expected_final_token) {
-            var expressions = parse_expression(current_scope, expected_final_token);
+            var expressions = parse_expression(current_scope, [expected_final_token]);
 
             if (expressions.length === 0) {
                 throw new Error("Field declaration missing initialization value" + JSON.stringify(peek()));
@@ -1595,6 +1613,12 @@ var erg;
         }
 
         function parse_function_declaration(current_scope, identifier) {
+            var info = get_identifier_declaration_information(current_scope, identifier);
+
+            if (info != null && info.in_current_scope === true && info.decl  != null) {
+                throw new Error("Function '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+            }
+
             var decl = new FunctionDeclaration(identifier, current_scope);
 
             decl.parameters = parse_parameter_list(current_scope);
@@ -1636,38 +1660,42 @@ var erg;
 
                 eat(); // identifier
 
-                expect_and_eat(TOKEN_TYPE_SINGLE_COLON);
+                if (accept_and_eat(TOKEN_TYPE_SINGLE_COLON)) {
+                    expect(TOKEN_TYPE_IDENTIFIER);
 
-                expect(TOKEN_TYPE_IDENTIFIER);
+                    var data_type = peek().text;
+                    eat();
 
-                var data_type = peek().text;
-                eat();
+                    var param = new ParameterInfo(identifier, data_type);
 
-                var param = new ParameterInfo(identifier, data_type);
-
-                each(results, function(res) {
-                    if (res.identifier === identifier) {
-                        throw new Error("You cannot declare function with the same parameter name twice: Parameter name is: " + identifier + " | " + JSON.stringify(peek()));
+                    each(results, function(res) {
+                        if (res.identifier === identifier) {
+                            throw new Error("You cannot declare function with the same parameter name twice: Parameter name is: " + identifier + " | " + JSON.stringify(peek()));
+                        }
+                    });
+                    
+                    switch(data_type) {
+                        case 'string':
+                        case 'int':
+                        case 'float':
+                        case 'bool':
+                            // Is Don, Is Good!
+                            break;
+                        default:
+                            throw new Exception("Data Type " + data_type + " not yet supported for parameter names... need to re-work the data type system to include primitive and custom types");
+                            break;
                     }
-                });
-                
-                switch(data_type) {
-                    case 'string':
-                    case 'int':
-                    case 'float':
-                    case 'bool':
-                        // Is Don, Is Good!
-                        break;
-                    default:
-                        throw new Exception("Data Type " + data_type + " not yet supported for parameter names... need to re-work the data type system to include primitive and custom types");
-                        break;
+
+                    results.push(param);
+                } else {
+                    var param = new ParameterInfo(identifier, 'any');
+                    results.push(param);
                 }
 
                 if (accept(TOKEN_TYPE_COMMA)) {
                     eat(); // ,
                 }
                 
-                results.push(param);
             }
 
             expect_and_eat(TOKEN_TYPE_PAREN_CLOSE);
@@ -1689,6 +1717,21 @@ var erg;
 
             call.args = parse_function_call_arguments(current_scope, identifier);
 
+            if (call.args.length !== info.decl.parameters.length) {
+                throw new Error("Function '" + identifier + "' expects " + info.decl.parameters.length + " arguments but recieved " + call.args.length + "; " + JSON.stringify(peek()));
+            }
+
+            for (var i = 0; i < info.decl.parameters.length; i++) {
+                // TODO(jwwishart) note that we ONLY look at the type of the first prt of... 
+                //  the argument expression list... This MIGHT be adequate? or is it?
+                // TODO(jwwishart) if the first call.args[i][[0] item is just an identifier there is NO TYPE...
+                //  associated and we can't therefore testing (there is no data_type on it.. so we get cannot get
+                //  name of undefined.
+                if (info.decl.parameters[i].data_type !== 'any' && info.decl.parameters[i].data_type !== call.args[i][0].data_type.name) {
+                    throw new Error("Function '" + identifier + "' argument " + (i + 1)  + " expects type of " + info.decl.parameters[i].data_type + " but was given type of " + call.args[i][0].data_type.name + "; " + JSON.stringify(peek()));
+                }
+            }
+
             expect_and_eat(TOKEN_TYPE_PAREN_CLOSE);
             expect_and_eat(TOKEN_TYPE_SEMICOLON);
 
@@ -1709,17 +1752,15 @@ var erg;
                     break;
                 }
 
-                results.push(parse_expression(current_scope, TOKEN_TYPE_COMMA));
-            } while (accept(TOKEN_TYPE_COMMA));
+                results.push(parse_expression(current_scope, [TOKEN_TYPE_COMMA, TOKEN_TYPE_PAREN_CLOSE]));
+            } while (accept_and_eat(TOKEN_TYPE_COMMA));
 
             return results;
         }
 
-        function parse_expression(current_scope, expected_final_token) {
+        function parse_expression(current_scope, expected_final_tokens) {
             var parts = [];
-            var token = peek();
-
-            var expected_final_token = expected_final_token || TOKEN_TYPE_SEMICOLON;
+            var expected_final_tokens = expected_final_tokens || [TOKEN_TYPE_SEMICOLON];
 
             // TODO(jwwishart) when is an expression ended? semicolon, no operator followed by...
             //  an identifier? how to detect missing semicolons essentially.
@@ -1727,29 +1768,36 @@ var erg;
             // Literals
             //
 
-            // TODO(jwwishart) this code should be able to be some by some helper function!
-            if (accept(TOKEN_TYPE_IDENTIFIER)) {
-                // TODO(jwwishart) check that the identifier exists, is the right type etc!!!
-                parts.push(new Identifier(token.text));
-            } else if (accept(TOKEN_TYPE_STRING_LITERAL)) {
-                parts.push(new Literal(token.text, get_primitive_data_type_by_name('string')));
-            } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
-                parts.push(new Literal(token.text, get_primitive_data_type_by_name('bool')));
-            } else if (accept(TOKEN_TYPE_INTEGER_LITERAL)) {
-                parts.push(new Literal(token.text, get_primitive_data_type_by_name('int')));
-            } else if (accept(TOKEN_TYPE_FLOAT_LITERAL)) {
-                parts.push(new Literal(token.text, get_primitive_data_type_by_name('float')));
-            } else if (accept(TOKEN_TYPE_NULL)) {
-                // No type!
-                parts.push(new Literal('null'));
-            }
+            do {
+                // TODO(jwwishart) this code should be able to be some by some helper function!
+                if (accept(TOKEN_TYPE_IDENTIFIER)) {
+                    var info = get_identifier_declaration_information(current_scope, peek().text);
+                    
+                    if (info === null || info.decl === null) {
+                        throw new Error("Identifier '" + peek().text + "' not found in scope: " + JSON.stringify(peek().text + " " + JSON.stringify(peek())));
+                    }
 
-            eat();
+                    // TODO(jwwishart) check that the identifier exists, is the right type etc!!!
+                    parts.push(new Identifier(peek().text));
+                } else if (accept(TOKEN_TYPE_STRING_LITERAL)) {
+                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('string')));
+                } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
+                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('bool')));
+                } else if (accept(TOKEN_TYPE_INTEGER_LITERAL)) {
+                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('int')));
+                } else if (accept(TOKEN_TYPE_FLOAT_LITERAL)) {
+                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('float')));
+                } else if (accept(TOKEN_TYPE_NULL)) {
+                    // No type!
+                    parts.push(new Literal('null'));
+                } else if (accept(TOKEN_TYPE_PLUS)) {
+                    parts.push(new BinaryOperator(peek().text, TOKEN_TYPE_PLUS));
+                }
 
-            // TODO(jwwishart) expect??? or loop or expect , or ; depending on context 'expected_final_token'!!!!
-            if (!accept(expected_final_token)) {
-                // TODO(jwwishart) continue the loop
-            }
+                eat();
+
+                // TODO(jwwishart) expect??? or loop or expect , or ; depending on context 'expected_final_token'!!!!
+            } while (!accept(expected_final_tokens));
 
             // Expression parts
             // function calls
@@ -1825,7 +1873,21 @@ var erg;
         ];
 
         // Contains all symbols in the program
+        // TODO(jwwishart) don't think this is right... ?
         this.symbol_info = [];
+
+        // Builting Functions
+        //
+
+        // print is inserts as raw assembly at the start of the program
+        // output. We just need a declaration so that we can type check
+        // etc on calls
+        var print = new FunctionDeclaration('print');
+        print.parameters.push(new ParameterInfo('message', 'any'));
+
+        this.identifiers = [
+            print
+        ];
     }
 
 
@@ -1962,6 +2024,11 @@ var erg;
 
     function Identifier(identifier) {
         this.identifier = identifier;
+    }
+
+    function BinaryOperator(text, token_type) {
+        this.text = text;
+        this.token_type = token_type;
     }
 
     function TypeInstantiation(type_name) {
@@ -2224,9 +2291,16 @@ var erg;
                     var build = node.identifier + "(";
 
                     for (var i = 0; i < node.args.length; i++) {
-                        // TODO(jwwishart) we only support single token expressions currently ...
-                        //  for each argument
-                        build += process_ast(node.args[i][0], null);
+
+                        for (var j = 0; j < node.args[i].length; j++) {
+                            if (node.args[i][j] instanceof BinaryOperator) {
+                                build += " " + node.args[i][j].text + " ";
+                                continue;
+                            }
+
+                            build += process_ast(node.args[i][j], null);
+                        }
+                        
 
                         if (i + 1 < node.args.length) {
                             build += ', ';

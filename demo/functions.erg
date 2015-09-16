@@ -108,6 +108,12 @@ print_message2(name, age);
 print_message_closed();
 
 
+// ERROR: you cannot declare an identifier with the same name as a...
+//  parameter name!
+// dont_declare_variable_with_same_name_as_parameter_name :: (not_me) {
+//    not_me := "This is not allowed";
+// }
+
 
 print("--- Argument Type Checking -----------------------------");
 

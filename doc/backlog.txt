@@ -1,6 +1,14 @@
 Backlog
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+- Type system
+    Need to clarify 1 how builtin types and custom types
+    are defined and recorded in the complier and how
+    they are referenced and used for type inference etc.
+- 
+
+
+
 Variables ---
 - String escape characters
 - multiple line here strings style stuff.

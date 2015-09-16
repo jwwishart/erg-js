@@ -44,3 +44,5 @@ if (toCompile.length > 0) {
     
     writeJavaScript(newFilename, output);
 }
+
+console.log("\nCompilation Completed ----------------------------\n\n");
