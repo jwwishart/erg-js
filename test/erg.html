@@ -205,27 +205,31 @@ my_print(12);
 
             // Compile Handler
             function exec() {
+                console.clear();
                 var code = mirror.getValue();
                 var output = document.getElementById('output');
-                output.textContent = 
-                erg.compile({ 
-                    'erg.html': code 
-                },{
-                    logger: {
-                        log: function(group, message) {
-                            if ($.type(message) === 'string') {
-                                console.info(group + " | " + message);
-                            } else {
-                                console.info(group, message);
-                            }
-                        }
-                    },
-                    //target: 'es6'
-                });
 
-                console.log("OUTPUT START -------");
+                console.log('ergjs | (C) 2015 Justin Wishart - Version ' + erg.VERSION.join('.') + '\n');
+
+                output.textContent = 
+                    erg.compile({ 
+                        'erg.html': code 
+                    },{
+                        logger: {
+                            log: function(group, message) {
+                                if ($.type(message) === 'string') {
+                                    console.info(group + " | " + message);
+                                } else {
+                                    console.info(group, message);
+                                }
+                            }
+                        },
+                        //target: 'es6'
+                    });
+
+                console.log("\nCompilation Completed!\n\n");
+
                 eval(output.textContent);
-                console.log("OUTPUT END   -------");
 
                 highlight();
             }

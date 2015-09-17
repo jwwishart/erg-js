@@ -5,7 +5,7 @@ var path = require('path');
 var erg = require('../src/erg.js');
 var dir = __dirname;
 
-console.log('ergjs | (C) 2015 Justin Wishart - Version 0.0.3\n');
+console.log('ergjs | (C) 2015 Justin Wishart - Version ' + erg.VERSION.join('.') + '\n');
 
 
 function getFileContents(path) {
@@ -25,8 +25,6 @@ if (process.argv.length > 2) {
         path: process.argv[2],
         contents: getFileContents(process.argv[2])
     });
-
-    console.log(JSON.stringify(toCompile));
 }
 
 if (toCompile.length > 0) {
@@ -45,4 +43,4 @@ if (toCompile.length > 0) {
     writeJavaScript(newFilename, output);
 }
 
-console.log("\nCompilation Completed ----------------------------\n\n");
+console.log("Compilation Completed!\n");

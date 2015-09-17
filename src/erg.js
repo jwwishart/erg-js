@@ -1,7 +1,20 @@
 /*
-    Backlog:
-    - Logging
-    - Make sure you can't assign to an enum! :o)
+
+- Turns off all the junk the compiler generates.
+
+Improvements -----------------------------
+- Cache previous few tokens (non-whitespace) so that 
+  we can point to the start token not the current one
+- Warning, Error, Info compiler logging functions
+  and put into context arrays for display at end of
+  compilations
+
+Bugs -------------------------------------
+
+Features ---------------------------------
+
+- Logging
+- Make sure you can't assign to an enum! :o)
 
 */
 
@@ -25,6 +38,8 @@ var erg;
         // Common JS
         module.exports = erg;
     }
+
+    erg.VERSION = [0,0,3];
 
 
     // @Helpers ---------------------------------------------------------------
@@ -136,7 +151,6 @@ var erg;
             target: options.target || 'es5'
         };
 
-
         this.logger = options && options.logger;
 
         this.current_filename = '';
@@ -151,18 +165,41 @@ var erg;
         }
     };
 
-    erg.CompilerContext.prototype.error = function(group, error) {
-        if (this.logger) {
-            this.logger.error(group, error);
-        }
-    };
 
-    erg.CompilerContext.prototype.warning = function(group, warning) {
-        if (this.logger) {
-            this.logger.error(group, warning);
-        }
-    };
+    function ERROR(location_info, message) {
+        // Assume by default that location_info is a lexeme!
+        var file = location_info.filename;
+        var line = location_info.line_no;
+        var col  = location_info.col_no;
 
+        // location_info could be a token though... so override all them undefineds...
+        if (location_info instanceof Token) {
+            file = location_info.lexeme.filename;
+            line = location_info.lexeme.line_no;
+            col = location_info.lexeme.col_no;
+        }
+
+        var col_indicator_line = '';
+
+        for (var i = 1; i < col; i++) {
+            col_indicator_line += '~';
+        }
+        col_indicator_line += '^~~~'
+
+        console.error("ERROR: (" + file + " ln: " + line + ", col: " + col + ")\n" +
+            message + "\n" +
+            _current_compiler_context.current_code.split('\n')[line - 1] + "\n" +
+            col_indicator_line);
+
+        throw new Error("Compilation cancelled!");
+    }
+
+    // TODO(jwwishart) need these or not???
+    ERROR.LEXER = "SYNTAX";
+    ERROR.TOKENIZER = "TOKENIZER";
+    ERROR.PARSER = "PARSER";
+
+    var _current_compiler_context = null;
 
     /// Compiles a file or files
     ///
@@ -181,7 +218,9 @@ var erg;
         var program = new Program();
         var context = new erg.CompilerContext(program, files, options);
 
-        console.log(context);
+        _current_compiler_context = context;
+
+        context.DEBUG && console.log(context);
 
         each(files, function(code, filename) {
             // Set current file information to context
@@ -234,7 +273,7 @@ var erg;
             },
 
             eat: function() {
-                context.log("SCANNER", code[i] + " - " + JSON.stringify(this.peek()));
+                context.DEBUG && context.log("SCANNER", code[i] + " - " + JSON.stringify(this.peek()));
 
                 // NOTE: Do the line and char stuff when you eat, not before!
                 if (code[i] === '\n') {
@@ -265,7 +304,6 @@ var erg;
         // TODO(jwwishart) cleanup the ordering?
         'TOKEN_TYPE_NULL',
         
-
         'TOKEN_TYPE_IDENTIFIER',
 
         // Literals
@@ -291,6 +329,9 @@ var erg;
         // Keywords
         'TOKEN_TYPE_RETURN_KEYWORD',
         'TOKEN_TYPE_NEW_KEYWORD',
+        'TOKEN_TYPE_KEYWORD_DEFER',
+        'TOKEN_TYPE_STRUCT_KEYWORD',
+        'TOKEN_TYPE_ENUM_KEYWORD',
 
         // Symbols
         'TOKEN_TYPE_PLUS',
@@ -300,9 +341,9 @@ var erg;
         'TOKEN_TYPE_UNINITIALIZE_OPERATOR',
         'TOKEN_TYPE_ASM_BLOCK',
         'TOKEN_TYPE_DIRECTIVE',
-        'TOKEN_TYPE_KEYWORD_DEFER',
-        'TOKEN_TYPE_STRUCT_KEYWORD',
-        'TOKEN_TYPE_ENUM_KEYWORD'
+
+
+        'TOKEN_TYPE_EOF',
     ]);
 
     var Token = function(type, lexeme) {
@@ -338,6 +379,7 @@ var erg;
         var token = null;
         var c;
         var multilineCommentDepth = 0;
+        var past_tokens = []; // Queue for non-whitespace tokens only. Handled in eat();
 
 
         // Char Traversal
@@ -347,7 +389,11 @@ var erg;
             return scanner.peek();
         }
 
-        function eat() {            
+        function eat() {
+            if (past_tokens.length > 10) {
+                past_tokens.shift(); // remove oldest item from start of array!
+            }
+
             scanner.eat();
         }
 
@@ -510,13 +556,13 @@ var erg;
             // TODO(jwwishart) 3_456_789 should parse fine... easier
             // TODO(jwwishart) floats, decimal, hex, exponents etc.
 
-            while((c = peek()) !== null) {
+            while ((c = peek()) !== null) {
                 // TODO(jwwishart) ignore spaces
 
                 if (c === '.') {
                     // TODO(jwwishart) test this!
                     if (is_float === true) {
-                        throw new Error("Error Trying to parse string literal: '" + result + ".' - found multiple periods while trying to parse number");
+                        throw new Error("Multiple periods while trying to parse number: '" + result + ".'");
                     }
 
                     is_float = true;
@@ -671,14 +717,17 @@ var erg;
                     if (c >= '0' && c <= '9') {
                         token = create_token(TOKEN_TYPE_INTEGER_LITERAL, '');
                         
+                        try {
+                            var number_result = get_number_literal();
+                            token.text = number_result.result;
+                            token.is_float = number_result.is_float;
 
-                        var number_result = get_number_literal();
-                        token.text = number_result.result;
-                        token.is_float = number_result.is_float;
-
-                        if (token.is_float) {
-                            token.type = TOKEN_TYPE_FLOAT_LITERAL;
-                            token.type_name = get_global_constant_name('TOKEN_TYPES', token.type);
+                            if (token.is_float) {
+                                token.type = TOKEN_TYPE_FLOAT_LITERAL;
+                                token.type_name = get_global_constant_name('TOKEN_TYPES', token.type);
+                            }
+                        } catch (e) {
+                            ERROR(scanner.get_lexeme(), e.toString())
                         }
 
                         return token;
@@ -722,6 +771,7 @@ var erg;
 
                             if (peek() === '-') {
                                 token = create_token(TOKEN_TYPE_UNINITIALIZE_OPERATOR, '---');
+                                token.lexeme.col_no -= 2; // move to start col no
                                 eat();
                                 return token;
                             }
@@ -742,8 +792,9 @@ var erg;
                         //
 
                         token = create_token(TOKEN_TYPE_IDENTIFIER, '');
+                        var col = token.lexeme.col_no; // Needs to be at start of identifier!
                         token.text = get_identifier();
-                        
+
                         // ... but it maybe a ...
 
                         // KEYWORD
@@ -762,30 +813,37 @@ var erg;
                             // Parse asm block!
                             var asm = get_asm_block();
                             token.text = asm;
+                            token.lexeme.col_no = col;
                         }
 
                         if (token.text === "defer") {
                             token = create_token(TOKEN_TYPE_KEYWORD_DEFER, 'defer');
+                            token.lexeme.col_no = col;
                         }
 
                         if (token.text === "return") {
                             token = create_token(TOKEN_TYPE_RETURN_KEYWORD, 'return');
+                            token.lexeme.col_no = col;
                         }
 
                         if (token.text === "null") {
                             token = create_token(TOKEN_TYPE_NULL, 'null');
+                            token.lexeme.col_no = col;
                         }
 
                         if (token.text === "struct") {
                             token = create_token(TOKEN_TYPE_STRUCT_KEYWORD, 'struct');
+                            token.lexeme.col_no = col;
                         }
 
                         if (token.text === "enum") {
                             token = create_token(TOKEN_TYPE_ENUM_KEYWORD, 'enum');
+                            token.lexeme.col_no = col;
                         }
 
                         if (token.text === "new") {
                             token = create_token(TOKEN_TYPE_NEW_KEYWORD, 'new');
+                            token.lexeme.col_no = col;
                         }
 
                         return token;
@@ -793,14 +851,16 @@ var erg;
 
                     var error_char_info = scanner.get_lexeme();
 
-                    throw new Error("ERROR: Unexpected character '" + c + "' (ASCII: ' + c.charCodeAt(0) + ') (ln: " + error_char_info.line_no + ", col: " + error_char_info.col_no +")");
+                    ERROR({ filename: context.current_filename, line_no: error_char_info.line_no, col_no: error_char_info.col_no },
+                          "Syntax error, unexpected token " + error_char_info.text);
                 }
 
-                return null;
+                token = create_token(TOKEN_TYPE_EOF, '');
+                return token;
             },
 
             eat: function() {
-                context.log("TOKENIZERE", JSON.stringify(token));
+                context.DEBUG && context.log("TOKENIZERE", JSON.stringify(token));
                 token = null;
             }
         };
@@ -816,14 +876,27 @@ var erg;
         var context = null;
         var tokenizer = null;
 
+        var past_tokens = []; // Queue for non-whitespace tokens only. Handled in eat();
 
-        function peek() {
+        function peek(back) {
+            if (has_value(back)) {
+                if (past_tokens.length >= back) {
+                    return past_tokens[past_tokens.length - back];
+                } else {
+                    return null; // :o(
+                }
+            }
+
             return tokenizer.peek();
         }
 
         // If we eat() we just move to the next valid token... the parse shouldn't have
         // to worry about whitespace...
         function eat() {
+            if (peek().type !== TOKEN_TYPE_WHITESPACE && peek().type !== TOKEN_TYPE_EOF) {
+                past_tokens.push(peek());
+            }
+
             tokenizer.eat();
 
             eat_non_important_tokens();
@@ -861,6 +934,10 @@ var erg;
                 return false; // Not the requested token
             }
 
+            if (peek().type === TOKEN_TYPE_EOF) {
+                return false;
+            }
+
             if (is_array(token_type)) {
                 var found = false;
 
@@ -885,7 +962,16 @@ var erg;
             ignore_whitespace = ignore_whitespace || true;
 
             if (peek() === null) {
-                throw new Error("Unexpected end of file. Was expecting: " + JSON.stringify(token_type));
+                // TODO(jwwishart) if the line is blank move back to previous non-blank line and ...
+                //  find the last non-whitespace character... that ought to be the location!
+                // TODO(jwwishart) perf?
+                var location_info = {
+                    filename: _current_compiler_context.current_filename,
+                    line_no:  _current_compiler_context.current_code.split("\n").length,
+                    col_no:   _current_compiler_context.current_code.split("\n")[_current_compiler_context.current_code.split("\n").length-1].length + 1,
+                };
+
+                ERROR(location_info, "Unexpected end of file. Was expecting token of type: " + get_global_constant_name('TOKEN_TYPES', token_type));
             }
 
             if (ignore_whitespace) {
@@ -906,11 +992,16 @@ var erg;
 
                 if (found === true) return true;
 
-                // TODO(jwwishart) make this error a little clearer by showing the ACTUAL string constant names for all required tokens
-                throw new Error('Unexpected Token ' + peek().type + ' (' + get_global_constant_name('TOKEN_TYPES', peek().type) + ') was expecting one of ' + JSON.stringify(token_type) + ' Token Info: ' + JSON.stringify(peek()));
+
+                var token_labels = [];
+                each(token_type, function(item) {
+                    token_labels.push(get_global_constant_name('TOKEN_TYPES', item));
+                });
+
+                ERROR(peek(), "Unexpected token: Expecting one of " + token_labels.join(",") + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
             } else {
                 if (peek().type !== token_type) {
-                    throw new Error('Unexpected Token ' + peek().type + ' (' + get_global_constant_name('TOKEN_TYPES', peek().type) + ') was expecting ' + token_type + ' (' + get_global_constant_name('TOKEN_TYPES', token_type) + ') Token Info: ' + JSON.stringify(peek()));
+                    ERROR(peek(), "Unexpected token: Expecting " + get_global_constant_name('TOKEN_TYPES', token_type) + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
                 }
             }
 
@@ -1036,7 +1127,7 @@ var erg;
                 }
             }
             
-            throw new Error("NOT IMPLEMENTED: infer_type no expression of type " + typeof(expression) + " not yet available");
+            ERROR("NOT IMPLEMENTED: infer_type no expression of type " + typeof(expression) + " not yet available");
         }
 
         function is_null_literal(expressions) {
@@ -1048,7 +1139,7 @@ var erg;
                 return peek() !== null && peek().type !== token_to_cancel_on;
             }
 
-            return peek() !== null;
+            return peek().type !== TOKEN_TYPE_EOF;
         }
 
         /// Parses tokens and constructs an ast on the program
@@ -1061,6 +1152,8 @@ var erg;
         /// Returns:
         ///     The compiled output (JavaScript in this case)
         erg.parse = function(context_arg, tokenizer_arg) {
+            past_tokens = []; // Queue for non-whitespace tokens only. Handled in eat();
+
             context = context_arg;
             tokenizer = tokenizer_arg;
 
@@ -1202,7 +1295,7 @@ var erg;
                                 info = get_identifier_declaration_information(current_scope, peek().text);
                                 
                                 if (info === null || info.decl === null) {
-                                    throw new Error("Identifier '" + identifier + "' not found in scope: " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+                                    ERROR(peek(), "Identifier '" + peek().text + "' not found.");
                                 }
 
                                 init = new TypeInstantiation(peek().text);
@@ -1220,12 +1313,12 @@ var erg;
                             if (info && info.decl instanceof VariableDeclaration &&
                                 info.decl.variable_type === 'const') 
                             {
-                                throw new Error("Constant '" + identifier + "' cannot be changed; " + JSON.stringify(info.decl));
+                                ERROR(peek(), "Constant '" + identifier + "' cannot be changed");
                             }
 
                             // Cannot find identifier to assign the value to...
                             if (info.found === false) {
-                                throw new Error("Cannot assign value to undeclared identifier '" + identifier + "' " + JSON.stringify(peek()));
+                                ERROR(token, "Cannot assign value to undeclared identifier '" + identifier + "'");
                             }
                         }
 
@@ -1250,13 +1343,13 @@ var erg;
                             // that is defined as a struct (not sure about enums???)
                             if (expected_data_type === 'any') {
                                 // Is Don, is Good!
-                            } else if (is_null_literal(expressions) && expected_data_type != 'any') {
+                            } else if (is_null_literal(expressions) && expected_data_type !== 'any') {
                                 // TODO(jwwishart) should strings be nullable?
-                                throw new Error("Cannot assign null to non nullable type of '" + expected_data_type + "' - null can only be assigned to variables of type 'any' or custom variable types. " + JSON.stringify(peek()));
+                                ERROR(start_token, "Null can only be assigned to variables of type 'any' or custom type references");
                             } else if (inferred_type.name === expected_data_type) {
                                 // Is Don, is Good!
                             } else {
-                                throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + expected_data_type + "' " + JSON.stringify(peek()));
+                                ERROR(peek(), "Expression of type '" + inferred_type.name + "' cannot be assigned to variable of type '" + expected_data_type + "'.");
                             }
                             
                             // Done! Add statement!
@@ -1278,7 +1371,9 @@ var erg;
                 return;
             }
 
-            throw new Error("unexpected token: " + JSON.stringify(peek()));
+            if (peek().type === TOKEN_TYPE_EOF) return;
+
+            ERROR(peek(), "Unexpected Token");
         }
 
         /// Parse Declarations
@@ -1294,7 +1389,7 @@ var erg;
             var info = get_identifier_declaration_information(current_scope, identifier);
 
             if (info != null && info.in_current_scope === true && info.decl  != null) {
-                throw new Error("Identifier '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+                ERROR(peek(1), "Identifier '" + identifier + "' cannot be re-declared");
             }
 
             var is_const = false;
@@ -1331,6 +1426,8 @@ var erg;
             var is_explicitly_uninitialized = false;
             var is_type_instantiation = false;
 
+            var explicit_init_token = null;
+
             // We tested for TOKEN_TYPE_DOUBLE_COLON in the parse_declaration function
             if (is_const) {
                 // NOTE(jwwishart) constants should be primitive
@@ -1365,6 +1462,8 @@ var erg;
             if (accept(TOKEN_TYPE_UNINITIALIZE_OPERATOR)) {
                 is_explicitly_uninitialized = true;
 
+                explicit_init_token = peek();
+
                 eat(); // ---
             }
 
@@ -1376,7 +1475,7 @@ var erg;
                         var info = get_identifier_declaration_information(current_scope, peek().text);
                         
                         if (info === null || info.decl === null) {
-                            throw new Error("Identifier '" + identifier + "' not found in scope: " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
+                            ERROR(peek(), "Identifier '" + peek().text + "' not found");
                         }
 
                         var init = new TypeInstantiation(peek().text);
@@ -1403,10 +1502,14 @@ var erg;
                 //   - ?
 
                 (function() {
+                    var start_token = peek();
                     var expressions = parse_expression(current_scope);
 
+                    // TODO(jwwishart) multiple places like this below!!!!
+                    // TODO(jwwishart) move back to previous line with non-whitespace and find col for ...
+                    //   last character and increment by 1 (or get previous non-whitespace token!
                     if (expressions.length === 0) {
-                        throw new Error("Variable declaration '" + identifier + "' missing initialization value" + JSON.stringify(peek()));
+                        ERROR(start_token, "Variable declaration for '" + identifier + "' missing initialization value");
                     }
 
                     // TODO(jwwishart) what is can't infer the type?
@@ -1415,10 +1518,14 @@ var erg;
                     var inferred_type = infer_type(expressions);
 
                     if (is_data_type_explicit) {
-                        if (inferred_type.name === data_type_name) {
+                        if (data_type_name === 'any') {
+                            // Is Don, is Good!
+                        } else if (is_null_literal(expressions) && data_type_name !== 'any') {
+                            ERROR(start_token, "Null can only be assigned to variables of type 'any' or custom type references");
+                        } else if (inferred_type.name === data_type_name) {
                             // Is Don, is Good!
                         } else {
-                            throw new Error("Expression of type '" + inferred_type.name + "' cannot be assigned to variable of expected type '" + data_type_name + "'");
+                            ERROR(start_token, "Expression of type '" + inferred_type.name + "' cannot be assigned to variable of type '" + data_type_name + "'.");
                         }
                     }
 
@@ -1429,7 +1536,7 @@ var erg;
                     is_assignment &&
                     is_explicitly_uninitialized === true) 
                 {
-                    throw new Error("You cannot explicitly uninitilize an untyped variable declaration... you must provide a type! " +  JSON.stringify(peek()));
+                    ERROR(explicit_init_token, "You cannot explicitly uninitilize an untyped variable declaration... you must provide a type! ");
                 }
 
                 // If there is no assignment we essentially add an assignment
@@ -1705,8 +1812,17 @@ var erg;
 
         // TODO(jwwishart) this should be in statement OR expression position as calls can return values
         function parse_function_call(current_scope, identifier) {
-            var call = new FunctionCall(identifier);
+            var info = get_identifier_declaration_information(current_scope, identifier);
 
+            if (info.found == false || info.decl == null || !(info.decl instanceof FunctionDeclaration)) {
+                if (info.found && !(info.decl instanceof FunctionDeclaration)) {
+                    ERROR(peek(), "Identifier '" + identifier + "' is not a function");
+                } else {
+                    ERROR(peek(), "Function '" + identifier + "' cannot be found");
+                }
+            }
+
+            var call = new FunctionCall(identifier);
             /*
                 - verify that the function exists (identifier exists representation is a function declaration or found imported)
                 - parse argument expressions (comma separated)
@@ -1715,10 +1831,12 @@ var erg;
 
             expect_and_eat(TOKEN_TYPE_PAREN_OPEN);
 
+            var start_argument_list = peek();
+
             call.args = parse_function_call_arguments(current_scope, identifier);
 
             if (call.args.length !== info.decl.parameters.length) {
-                throw new Error("Function '" + identifier + "' expects " + info.decl.parameters.length + " arguments but recieved " + call.args.length + "; " + JSON.stringify(peek()));
+                ERROR(peek(), "Function '" + identifier + "' expects " + info.decl.parameters.length + " arguments but recieved " + call.args.length);
             }
 
             for (var i = 0; i < info.decl.parameters.length; i++) {
@@ -1728,7 +1846,7 @@ var erg;
                 //  associated and we can't therefore testing (there is no data_type on it.. so we get cannot get
                 //  name of undefined.
                 if (info.decl.parameters[i].data_type !== 'any' && info.decl.parameters[i].data_type !== call.args[i][0].data_type.name) {
-                    throw new Error("Function '" + identifier + "' argument " + (i + 1)  + " expects type of " + info.decl.parameters[i].data_type + " but was given type of " + call.args[i][0].data_type.name + "; " + JSON.stringify(peek()));
+                    ERROR(start_argument_list, "Function '" + identifier + "' argument " + (i + 1)  + " expects type of " + info.decl.parameters[i].data_type + " but was given type of " + call.args[i][0].data_type.name);
                 }
             }
 
@@ -1774,7 +1892,7 @@ var erg;
                     var info = get_identifier_declaration_information(current_scope, peek().text);
                     
                     if (info === null || info.decl === null) {
-                        throw new Error("Identifier '" + peek().text + "' not found in scope: " + JSON.stringify(peek().text + " " + JSON.stringify(peek())));
+                        ERROR(peek(), "Identifier '" + peek().text + "' not found in scope");
                     }
 
                     // TODO(jwwishart) check that the identifier exists, is the right type etc!!!
@@ -1797,7 +1915,7 @@ var erg;
                 eat();
 
                 // TODO(jwwishart) expect??? or loop or expect , or ; depending on context 'expected_final_token'!!!!
-            } while (!accept(expected_final_tokens));
+            } while (!accept(expected_final_tokens) && peek().type !== TOKEN_TYPE_EOF);
 
             // Expression parts
             // function calls
@@ -2046,8 +2164,8 @@ var erg;
         erg.target = function(context_arg) {
             context = context_arg;
 
-            context.log("TARGET", context.program);
-            context.log("TARGET", context.program.files[0]);
+            context.DEBUG && context.log("TARGET", context.program);
+            context.DEBUG && context.log("TARGET", context.program.files[0]);
 
             return process_ast(context.program).join('\n');
         };
@@ -2385,6 +2503,7 @@ var erg;
                         push((is_decl ? the_var : '') + node.identifier + ' = new ' + node.init[0].type_name + ';');
                     } else {
                         // TODO(jwwishart) assignment to a const not allowed!)
+                        // TODO(jwwishart) Can above issue be resolved in the parser? Not here!!!
                         if (node.variable_type === 'const') {
                             throw new Error("Constant declaration must be initialized:" + JSON.stringify(node));
                         }

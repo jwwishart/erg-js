@@ -45,3 +45,4 @@ output("jwwishart", 35, 80.51);
 
 // ERROR: Type of argument is wrong
 // output(1234, "string", 1235.1235);
+
