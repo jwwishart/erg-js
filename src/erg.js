@@ -7,12 +7,37 @@
 
 /*
 
-FOCUS: expression parsing and related type checking etc.
+FOCUS: type system
+  - how to specify the type of an identifier
+    - function (argument list types and return type)
+    - variables/constants
+    - structure and enums
+    - arrays
+    - pointers (in js? :o)
+
+UP NEXT: expression parsing and related type checking etc.
   - should be able to parse binary, unary and comparison expressions
   - should handle parens
 
 UP NEXT: namespace related functionality
-  - 
+  - member access expressions 
+        my_person_instance.name;
+        <struct_instance>.<field_name>
+        
+        Color.Red;
+        <enum_type>.<field_name>
+  - member function (extension methods, there are no methods on structs as such.
+        my_person.get_full_name();
+        <struct_instance>.<extension_method_call>; 
+
+  - resolution for this for modules (must be imported and
+    used with prefix (TODO LATER BUT EXAMPLE FOR CLARITY OF USE CASES)
+        using http;
+        http.request("http://www.example.com");
+        <module>.<function>(...);
+
+
+
 
 
 
@@ -22,6 +47,8 @@ Improvements -----------------------------
 - Warning, Error, Info compiler logging functions
   and put into context arrays for display at end of
   compilations
+- Constants ought to be all uppercase... Warn in compiler?
+
 
 Bugs -------------------------------------
 
@@ -1994,7 +2021,7 @@ var erg;
         this.declaration = decl;
         this.scope       = scope;
 
-        // true ONLY WHEN all type information is resolved
+        // True ONLY WHEN all type information is resolved
         // when all symbol information objects in
         // the Program.symbol_info array are is_resolved == true
         // then we are done type inference!
@@ -2151,6 +2178,17 @@ var erg;
 
         this.identifier = identifier;
         this.args = [];
+    }
+
+
+    // @Type System -----------------------------------------------------------
+
+    function TypeDefinition(
+        identifier,
+        is_resolved, // Whether we can actually fill out the type information or NOT?
+        default_value, // null for non-primitive types by default?
+        flags) 
+    {
     }
 
 

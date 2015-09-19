@@ -1,11 +1,103 @@
 Backlog
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-- Type system
-    Need to clarify 1 how builtin types and custom types
-    are defined and recorded in the complier and how
-    they are referenced and used for type inference etc.
-- 
+--- TYPE SYSTEM NOTES ----------------------------------
+
+Some type examples:
+    // TODO(jwwishart) why the core.String etc? ...
+    //  Answer: we might have functions of them? (Extension methods)
+    //  ANSWER: 
+    - string (core.String type)
+    - int (core.Int type)
+    - float (core.Float type)
+    - decimal (core.Decimal type);
+        - will be a special object for calculation of precise values like money)
+    - bool (core.Boolean type)
+    - any (core.Any type);
+    - null ??? assignable to non primitive types only?
+    - void ??? for placs where no value returned?? funcs only?
+
+    - function (core.Function type)
+        - is lambda?
+        - closed over variables (Explicity ??)
+        - return type list (multiple results potentially)
+        - argument type list
+
+    - struct (core.Structure type);
+
+    - enum
+        - Start off with simple enums as constants!
+          essentially any use of enum value will be
+          replaced in places enum is used... ?
+        - only numeric types allowed OR LOOK AT RUST style enums? (java enums?)
+
+    - array (core.Array type)
+        - should be dynamic and non-dynamic type arrays?
+
+Types should all have builting type definitions
+and the keywords are just supporting specification of 
+the given type definition in a keyword format.
+
+We need to know:
+    - identifier
+
+    - is_resolved
+
+    - default_value ???
+
+    - is_primitive (string, int, float, bool etc);
+    - is_null
+    - is_void
+
+    - is_function
+    - is_struct
+    - is_enum
+    - is_array
+
+    // This information is so we can re-try determination
+    // of the type and comparison of type information
+    - identifier_declaration (function, variable, struct etc)
+    - scope_of_declaration (where above decl is declared)
+    // So the quesiton is ... what about expressions where an identiifier is used... we would have to re-process the types for all expression parts and then re-evaluate whether the expression types match appropriately and then determine whether the expression (say a binary expression) is appropriate in the given context (say an if statement or as an argument to a function....
+    SO we essentially have a bottom up parsing of the AST... to validate everything is ok??
+
+Scenarios:
+    Variable Declaration
+        - The identifier is determined
+        - We have type name
+        - Find the TypeDefinition in the hierarchy... or in imported modules and associate
+        - the type inforamation WITH the variable declaration
+    Variable Declaration type inference
+        - The indetnfier is determined
+        - We have a constant assignment at declaration site
+        - Determine the tyep and find the TypeDeclaration
+    Variable Declaration with Constant assignement where const is declared after variable declaration
+        - The identifier is determined
+        - we have assignment of identifier
+        - we can't determine the identifiers type as it is not be processed yet
+        - we construct a TypeDefinition with identifier and mark it as is_resolved = false... and we assign it to the program for later processing
+        - When compilation is done as much as possible we will then process the TypeDEfinition objects on the program which we will then re-try determination of the TypeDefiniitions
+
+    Function Declaration (Same as varibles essentially)
+
+    Assignment
+        - identifier is ok
+        - assigned value might be anything (expression, function call etc)
+        - might not have 
+
+        Case Example:
+
+        result := is_this_ok("password");
+
+        TypeDefinition would not be found for 
+
+THIS ALL MAKES ME THINK THAT I NEED TO JUST PARSE THE THING
+AND FORGET ABOUT TYPE CHECKING ERRORS AND DO IT IN A SEPARATE
+PARSE AS I WILL HAVE TO DO IT FOR ALL CASES AFTER COMPILATION
+ANYWAY AS I
+
+--------------------------------------------------------
+
 
 
 
