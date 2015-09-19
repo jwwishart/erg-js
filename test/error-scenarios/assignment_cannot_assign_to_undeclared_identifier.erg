@@ -1,0 +1,3 @@
+// Assignment to undeclared identifier
+
+what = 125;

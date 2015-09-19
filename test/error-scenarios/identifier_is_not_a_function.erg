@@ -1,0 +1,4 @@
+// Identifier is not a function - cannot call it
+
+cant_call := 134;
+cant_call();

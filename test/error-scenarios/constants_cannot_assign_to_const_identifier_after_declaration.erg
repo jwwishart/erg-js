@@ -1,0 +1,4 @@
+// You cannot change the value of a const
+
+con :: 1234;
+con = 1234;

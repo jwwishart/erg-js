@@ -147,8 +147,13 @@ var erg;
         this.program = program;
         this.files = files;
         
+        options = options || {};
+
         this.options = {
-            target: options.target || 'es5'
+            target: options.target || 'es5',
+
+            // Suppresses writing errors
+            suppress_errors: options.suppress_errors || false
         };
 
         this.logger = options && options.logger;
@@ -159,9 +164,15 @@ var erg;
 
     erg.CompilerContext = CompilerContext;
 
-    erg.CompilerContext.prototype.log = function(group, message) {
-        if (this.logger) {
-            this.logger.log(group, message);
+    erg.CompilerContext.prototype.info = function(group, message) {
+        if (this.logger && this.logger.info) {
+            this.logger.info(group, message);
+        }
+    };
+
+    erg.CompilerContext.prototype.error = function(group, message) {
+        if (this.logger && this.logger.error) {
+            this.logger.error(group, message);
         }
     };
 
@@ -186,10 +197,18 @@ var erg;
         }
         col_indicator_line += '^~~~'
 
-        console.error("ERROR: (" + file + " ln: " + line + ", col: " + col + ")\n" +
+        var message = "ERROR: (" + file + " ln: " + line + ", col: " + col + ")\n" +
             message + "\n" +
             _current_compiler_context.current_code.split('\n')[line - 1] + "\n" +
-            col_indicator_line);
+            col_indicator_line;
+
+        if (_current_compiler_context == null || _current_compiler_context.options == null ||
+            !_current_compiler_context.options.suppress_errors) 
+        {
+            console.error(message);
+        }
+
+        _current_compiler_context.error("Compiler", message);
 
         throw new Error("Compilation cancelled!");
     }

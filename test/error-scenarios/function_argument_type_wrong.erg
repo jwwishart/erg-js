@@ -1,0 +1,6 @@
+// Argument to function call of wrong type
+
+my_func :: (str : string) {
+}
+
+my_func(1234);

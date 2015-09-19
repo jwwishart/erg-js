@@ -1,0 +1,4 @@
+// Cannot redeclare identifier in the same scope
+
+vvv := 124;
+vvv := 124;
