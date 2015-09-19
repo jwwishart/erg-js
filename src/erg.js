@@ -1,8 +1,19 @@
 /*
+    Copyright (c) 2015 Justin Wishart
+    
+    License: See LICENSE.txt at the root of this repository
+*/
+
+
+/*
 
 FOCUS: expression parsing and related type checking etc.
   - should be able to parse binary, unary and comparison expressions
   - should handle parens
+
+UP NEXT: namespace related functionality
+  - 
+
 
 
 Improvements -----------------------------
