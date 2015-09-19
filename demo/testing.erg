@@ -8,6 +8,41 @@
 //
 
 
+Person StructDefinition
+    FieldList
+        FieldDefinition
+            Identifier
+            TypeDefinition
+                identifier
+                is_primitive
+                is_Resovled = false;
+
+            // THIS TRIGGERS RESOLUTION ENTRY IN TABLE
+
+RESOLUTION ENTRY TABLE
+    - DEFAULT_AGE
+    - point to TypeDefinition in above hierarchy
+
+
+when DEFAULT_AGE is processed we come back at some point
+and find the TypeDefinition in STruct field in the RESOLUTION ENTRY TABLE
+and we can then
+
+
+
+
+/*
+    Type checking resolution table (per scope?)
+    - Person  well IS it waiting???
+    - DEFAULT_AGE - waiting (scope is struct)
+
+
+    // DEFAULT_AGE is done
+
+    type check each
+        - Person. not 
+ */
+
 
 /*
     We want to store the type definition information at the top of the scope
