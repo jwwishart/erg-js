@@ -1,0 +1,3 @@
+// Cannot have two parameters with the same name in function definition
+
+declaring_me :: (arg : string, arg : int) {}

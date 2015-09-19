@@ -1,6 +1,9 @@
 /*
 
-- Turns off all the junk the compiler generates.
+FOCUS: expression parsing and related type checking etc.
+  - should be able to parse binary, unary and comparison expressions
+  - should handle parens
+
 
 Improvements -----------------------------
 - Cache previous few tokens (non-whitespace) so that 
@@ -193,9 +196,9 @@ var erg;
         var col_indicator_line = '';
 
         for (var i = 1; i < col; i++) {
-            col_indicator_line += '~';
+            col_indicator_line += ' ';
         }
-        col_indicator_line += '^~~~'
+        col_indicator_line += '^'
 
         var message = "ERROR: (" + file + " ln: " + line + ", col: " + col + ")\n" +
             message + "\n" +
@@ -1739,12 +1742,7 @@ var erg;
         }
 
         function parse_function_declaration(current_scope, identifier) {
-            var info = get_identifier_declaration_information(current_scope, identifier);
-
-            if (info != null && info.in_current_scope === true && info.decl  != null) {
-                throw new Error("Function '" + identifier + "' cannot be re-declared; " + JSON.stringify(identifier + " " + JSON.stringify(peek())));
-            }
-
+            // NOTE: re-declaration scenario caught at identifier parsing level.. No need here!
             var decl = new FunctionDeclaration(identifier, current_scope);
 
             decl.parameters = parse_parameter_list(current_scope);
@@ -1782,7 +1780,8 @@ var erg;
 
             while (get_while_condition(TOKEN_TYPE_PAREN_CLOSE)) {
                 expect(TOKEN_TYPE_IDENTIFIER);
-                var identifier = peek().text;
+                var identifier_token = peek();
+                var identifier = identifier_token.text;
 
                 eat(); // identifier
 
@@ -1796,7 +1795,7 @@ var erg;
 
                     each(results, function(res) {
                         if (res.identifier === identifier) {
-                            throw new Error("You cannot declare function with the same parameter name twice: Parameter name is: " + identifier + " | " + JSON.stringify(peek()));
+                            ERROR(identifier_token, "You cannot declare function with the same parameter name twice: Parameter name is: " + identifier);
                         }
                     });
                     

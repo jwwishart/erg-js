@@ -1,0 +1,27 @@
+// TODO(jwwishart) move the asset method into the code ...
+//  erg.js code and create a declaration
+
+assert :: (b : bool, error_message : string) {
+    asm {
+        if (b === false) {
+            throw new Error("ASSERT: " + error_message);
+        }
+    }
+}
+
+an_integer : int;  // zero by default
+a_boolean  : bool; // false by default
+
+
+print("an_integer = " + an_integer);
+print("a_boolean  = " + a_boolean);
+
+an_integer = 1000;
+
+// UPTO HERE --------------------------------------
+
+// TODO(jwwishart) maybe do comparison expressions first...
+//  so that assert will be usable! :o)
+
+// an_integer = 1000 + 2000;
+// assert(an_integer == 3000, "nooo!");

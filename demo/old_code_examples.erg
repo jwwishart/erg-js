@@ -1,0 +1,47 @@
+
+// Simple Build in Function Test
+//
+
+print("--- Simple Tests -----------------------------");
+
+
+// Nested Function Declarations
+//
+
+test :: () {
+    test_internal :: () {
+        print("Hello World from test()>test_internal()");
+    }
+
+    // ERROR: Cannot redeclare the same function identifier in the same scope
+    //test_internal :: () {
+    //    print("Hello World from test()>test_internal()");
+    //}
+
+    test_internal();
+}
+
+test();
+
+// ERROR: method not declared (not in this scope anyway) so this throws! or should!
+// test_internal();
+
+d := 125;
+
+// ERROR: d is not a function (but a variable.. .can't execute it!)
+// d();
+
+output :: (name : string, age : int, weight : float) {
+    asm {
+        console.log("Name: " + name + ", Age: " + age + ", Weight: " + weight);
+    }
+}
+
+
+output("jwwishart", 35, 80.51);
+
+// ERROR: Number of arguments is wrong
+// output("jwwishart", 35);
+
+// ERROR: Type of argument is wrong
+// output(1234, "string", 1235.1235);

@@ -1,0 +1,12 @@
+// Function cannot be found in scope when declared in innner scope
+
+test :: () {
+    test_internal :: () {
+        print("Hello World from test()>test_internal()");
+    }
+
+    test_internal();
+}
+
+test();
+test_internal();
