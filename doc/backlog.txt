@@ -54,6 +54,12 @@ We need to know:
     - is_enum
     - is_array
 
+    ??? are these relevant.. are the TYPE of type  
+    /// value relevant (is_function etc...)?????
+    
+    - is_const
+    - is_variable
+
     // This information is so we can re-try determination
     // of the type and comparison of type information
     - identifier_declaration (function, variable, struct etc)
@@ -95,6 +101,10 @@ THIS ALL MAKES ME THINK THAT I NEED TO JUST PARSE THE THING
 AND FORGET ABOUT TYPE CHECKING ERRORS AND DO IT IN A SEPARATE
 PARSE AS I WILL HAVE TO DO IT FOR ALL CASES AFTER COMPILATION
 ANYWAY AS I
+
+OR I should actually maybe make the process such that I can call it from wherever at whatever time and maybe do some processing initially, but process what is remaining when I am done compiling as much as possible linearly.
+
+This would mean that the structure of the AST should be completed by the initial parse... but the 2nd one ought to be able to fill out everything else and do VALIDATION CHECKS as if if on the initial parse and the type information is present.
 
 --------------------------------------------------------
 

@@ -1,41 +1,24 @@
-// Generated: 2015-9-19 17:34
+// Generated: 2015-9-19 21:46
 
 "use strict";
 
 function print(message) { console.log(message); }
 
+function assert(condition, fail_message) {
+    // NOTE: coersion on purpose.. if you pass null or undefined
+    // the condition should fail.
+    if (condition == false) {
+        throw new Error("ASSERTION FAILED: " + fail_message);
+    }
+}
+
 // File Start: input_filename
-    print('--- Simple Tests -----------------------------');
-    
 
-    function test() {
-        
+let Person = function() {
+        this.name = ''; 
+        this.age = 0; 
+};
 
-        function test_internal() {
-            print('Hello World from test()>test_internal()');
-        }
-
-        test_internal();
-    }
-
-    test();
-    let d = 125;
-    
-
-    function output(name,age,weight) {
-        
-
-// RAW ASM OUTPUT START (javascript) -------------------------
-         
-        console.log("Name: " + name + ", Age: " + age + ", Weight: " + weight);
-    
-        
-// RAW ASM OUTPUT END (javascript) --------------------------
-
-
-    }
-
-    output('jwwishart', 35, 80.51);
 // File End: input_filename
 
 

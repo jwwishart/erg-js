@@ -2189,7 +2189,50 @@ var erg;
         default_value, // null for non-primitive types by default?
         flags) 
     {
+        this.identifier = identifier;
+        this.is_resolved = is_resolved,
+        this.default_value = default_value || null;
+        
+        this.is_primitive = (flags && flags.is_primitive) || false;
+
+        // keyword_synonym only for is_primitive true scenarios!
+        this.keyword_synonym = (flags != null && flags.keyword_synonym) ? flags.keyword_synonym : null;
+
+        this.is_null = (flags && flags.is_null) || false;
+        this.is_void = (flags && flags.is_void) || false;
+
+        this.is_function = (flags && flags.is_function) || false;
+        this.is_struct = (flags && flags.is_struct) || false;
+        this.is_enum = (flags && flags.is_enum) || false;
+        this.is_array = (flags && flags.is_array) || false;
     }
+
+    var __any = new TypeDefinition("Any", true, null /* primitive types have string value??? */, {
+        is_primitive: true,
+        keyword_synonym: 'any'
+    });
+
+    var __int = new TypeDefinition("Integer", true, '0', { 
+        is_primitive: true,
+        keyword_synonym: 'int'
+    });
+
+    var __null = new TypeDefinition("Null", true, null, { 
+        is_primitive: true, // ???
+        is_null: true,
+        keyword_synonym: 'null'
+    });
+
+
+    var __void = new TypeDefinition("Void", true, null, { 
+        is_primitive: true, // ???
+        is_void: true,
+        keyword_synonym: 'void'
+    });
+
+    var __struct = new TypeDefinition("Person", true, null /* all custom types! */, {
+        
+    });
 
 
     // @Data Types ------------------------------------------------------------
