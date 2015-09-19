@@ -1,0 +1,3 @@
+// Assert with false condition should throw an ASSERTION FAILED error
+
+assert(false, "This SHOULD!");

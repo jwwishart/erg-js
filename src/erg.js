@@ -1,6 +1,6 @@
 /*
     Copyright (c) 2015 Justin Wishart
-    
+
     License: See LICENSE.txt at the root of this repository
 */
 
@@ -1874,7 +1874,9 @@ var erg;
                 // TODO(jwwishart) if the first call.args[i][[0] item is just an identifier there is NO TYPE...
                 //  associated and we can't therefore testing (there is no data_type on it.. so we get cannot get
                 //  name of undefined.
-                if (info.decl.parameters[i].data_type !== 'any' && info.decl.parameters[i].data_type !== call.args[i][0].data_type.name) {
+                if (info.decl.parameters[i].data_type !== 'any' &&
+                    info.decl.parameters[i].data_type !== call.args[i][0].data_type.name) 
+                {
                     ERROR(start_argument_list, "Function '" + identifier + "' argument " + (i + 1)  + " expects type of " + info.decl.parameters[i].data_type + " but was given type of " + call.args[i][0].data_type.name);
                 }
             }
@@ -2026,14 +2028,20 @@ var erg;
         // Builting Functions
         //
 
+        // TODO(jwwishart) move this into default includes? (core module/package?)
         // print is inserts as raw assembly at the start of the program
         // output. We just need a declaration so that we can type check
         // etc on calls
         var print = new FunctionDeclaration('print');
         print.parameters.push(new ParameterInfo('message', 'any'));
 
+        var assert = new FunctionDeclaration('assert');
+        assert.parameters.push(new ParameterInfo('condition', 'bool'));
+        assert.parameters.push(new ParameterInfo('fail_message', 'string'));
+
         this.identifiers = [
-            print
+            print,
+            assert
         ];
     }
 
@@ -2297,6 +2305,13 @@ var erg;
 
                 // TODO(jwwishart) remove out into default includes.... 
                 push("function print(message) { console.log(message); }\n");
+                push("function assert(condition, fail_message) {\n" +
+                     "    // NOTE: coersion on purpose.. if you pass null or undefined\n" +
+                     "    // the condition should fail.\n" +
+                     "    if (condition == false) {\n" +
+                     "        throw new Error(\"ASSERTION FAILED: \" + fail_message);\n" +
+                     "    }\n" +
+                     "}\n");
 
                 // Process Files
                 process_onto_results(node.files, result, level);
