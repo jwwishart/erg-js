@@ -162,3 +162,178 @@ value types. declare a struct that cannot be null   struct args nullable. struct
 char data type  herestrings..., @ in c# or like jon does it.            
     unions. . see how type script implements them.  myunion :: union {  x : int | float } you can only assign one of those types. .. maybe you should be able to have is_x_int : bool and is_x_float : bool.. then x_as_int : int and x_as_float : float... Instead of having to cast. .. also a x_ type : type for switches etc.   using. file level allows import of modules. using conversion; using conversion.json; this imports all functions into current space. this ought to be able to be done at ANY SCOPE I.e. in a block have a using to import one module into that block.  you should even be able to just import a single function or struct etc.  this incluses function scope etc. enums could be impoerted into a block of a function without polutong everything putside it... this is clpse to context imports.... reduces clutter at top of file and maintaining it. should be able to go #using git "git@github.com" ...style import and it should be downloaded an built if it is an erg program build.erg file ar root.    functions can be defined like extension methods in c# and they should be callable like functions or as methods off of an iddntifier of said type... parseint :: (arg : this string) int.  . called like parseint(150) or "134".parseint() or mystr.parseint ()... static type helpers might be good... int.parse() where int is the class Int... declaration would be parse :: (arg : string) this int  then int.parse ("1849") would be valid. where the this is is where iit is associated. maybe attach-to might be better... I.e. a more descriptive keyword.   I
 out of order type inference... I.e. struct declared after first lexical use.typescript uses bottom up inference normally then top down. might need to iterate ast and filk in info latter as simplest solution....              
+
+
+
+
+
+
+
+
+
+
+// Type Definition
+//
+
+
+Person StructDefinition
+    FieldList
+        FieldDefinition
+            Identifier
+            TypeDefinition
+                identifier
+                is_primitive
+                is_Resovled = false;
+
+            // THIS TRIGGERS RESOLUTION ENTRY IN TABLE
+
+RESOLUTION ENTRY TABLE
+    - DEFAULT_AGE
+    - point to TypeDefinition in above hierarchy
+
+
+when DEFAULT_AGE is processed we come back at some point
+and find the TypeDefinition in STruct field in the RESOLUTION ENTRY TABLE
+and we can then resolve it and REPLACE the type with the one we
+found by re-calling type_resolution() or something???
+
+
+
+
+/*
+    Type checking resolution table (per scope?)
+    - Person  well IS it waiting???
+    - DEFAULT_AGE - waiting (scope is struct)
+
+
+    // DEFAULT_AGE is done
+
+    type check each
+        - Person. not 
+ */
+
+
+/*
+    We want to store the type definition information at the top of the scope
+    where the type (whatever it is is defined.
+
+    Below we have a Person struct.
+    It should have a TypeDefinition with identifier of "Person", null able for default value
+    non primitive with is_struct
+
+    We are missing the DEFAULT_AGE constant because it is declared later in the file...
+
+    Even though we know the structure of the Person, we still are missing something... we
+    don't know the default value of 'age'... so we need to defer it to the 2nd pass...
+
+    We would record the Person structure as is_resolved = false as it is not complete... but we would also 
+    have a DEFAULT_AGE identifier with a TypeDefinition of integer
+
+ */
+Person :: struct {
+    name : string,
+    age  : int = DEFAULT_AGE
+}
+
+
+DEFAULT_AGE :: 18;
+
+
+/*
+
+    As we are parsing Person we would end up registering Person as Not-REsolved... it would need to 
+
+
+
+ */
+
+/*
+
+ FurtherPassObjects:
+    - Identifier = Person
+    - is_struct = true
+    - is_resolved = false
+    - declaration  = ast node for struct Struct
+    - Scope (where the StructDeclaration resides) i.e. in the statements
+    - dependent_on: [
+        FurtherPassObjects:
+              THE IDENTIFER ASSIGNED
+            - identifier: DEFAULT_AGE
+            - is_primitive: true,
+            - is_resolved = false,
+            - Scope (struct ??? recursive???)
+            - dependent_on: [
+                //// THIS IS WHERE WE ARE STUCK! We can't see DEFAULT_AGE yet!
+            ]
+    ]
+
+
+we would keep parsing and see DEFAULT_AGE...
+we could either (at this point) go and see if we can find anything that 
+matches or do it in another parse....
+
+we would recurse the array and tree of dependents to find any use of the identifier DEFAULT_AGE
+in this case we would just go to the scope (file in this case) and look at the further parse FurtherPassObjects
+recursing the structure... we could then find the bottom most items and fill in things
+- finds the identifier: DEFAULT_AGE in assignment
+- We could either replace the assignment expression rhs with a literal or 
+  the identifier for the constant as it is in the current scope.
+- 
+
+If there is no use in the current scope then the only other issue we need to worry about
+is that the constant or type etc might be used somewhere else... in that case
+the other file would require that THIS file was compiled first...
+HEREIN LIES ISSUES WITH CIRCULAR DEPENDENCIES :oS
+
+FILE/PACKAGE DEPENDENCIES (both, keep with one???)
+Suggested approach is to:
+- parse the file looking for 
+  #using package;
+  #using "another-package"
+
+- construct a dependency graph of dependent files
+- ensure there is not circular reference anywhere 
+    - no package can reference itself
+    - no package can reference itself via any other package
+- start compilation at the leafs first (doing all bottom most leaves recursively) then
+  moving UP the tree to the next level
+
+SCOPE/FILE BASED LEXICAL DEPENDENCIES
+- while parsing file keep track of items that are not fully resolved
+  - referrene to the scope the item is in (scope, file, structure decl, variable decl)
+  - some sort of information about where the item is that we are trying to determine the type for ...
+    THIS BIT IS COMPLICATED IT SEEMS!!!!!! we need to say, hey we have a FunctionCall, so 
+    iterate all the arguments till we find it, check the return type (regardless in case the type
+    is the same) and if so what do we do then? set the Type information and verify the type 
+    information is correct... how 
+
+    HOW do we tell the process to go back up the list of type thingies that still need processing?
+
+    We need is_resolved on everything?
+    Should everything be an AstNode with is_resolved on it? Maybe...
+
+    Do we need a visitor of some sort that can just iterate through the whole ast
+    and figure out what is not set... do we just put the AST nodes that are not resolved
+    into an array and call the visitor on each of those
+
+    VISITOR
+        would parse function by
+            - next() visitor method would reutrn the following for each call
+                - first arguments first expression
+                - first arguments second expression 
+                    first arguments second expression (which is an identifier) 
+                       first arugments econd exxpression type definition (function)
+                           ???? do we keep going? at what point do we stop... I think
+                           we need to stop when we have reached the bottom and then we can recurse up
+
+                           otherwise we will not fully resolve everything that we need to know potentially aboute everything 
+
+
+                           :oS
+
+
+
+
+
+
+*/

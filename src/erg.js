@@ -201,6 +201,8 @@ var erg;
 
         this.current_filename = '';
         this.current_code = '';
+
+        this.unresolved_types = [];
     };
 
     erg.CompilerContext = CompilerContext;
@@ -219,6 +221,14 @@ var erg;
 
 
     function ERROR(location_info, message) {
+        // TODO(jwwishart) this should always get this info?
+        if (location_info == null) {
+            location_info = {};
+            location_info.filename = 'unknown';
+            location_info.line = -1;
+            location_info.col = -1
+        }
+
         // Assume by default that location_info is a lexeme!
         var file = location_info.filename;
         var line = location_info.line_no;
@@ -292,6 +302,7 @@ var erg;
             var tokenizer = erg.tokenize(context, scanner);
             
             erg.parse(context, tokenizer);
+            erg.type_inference(context);
 
             result += erg.target(context) + "\n\n\n";
         });
@@ -1070,30 +1081,6 @@ var erg;
 
         function add_statement(current_scope, statement) {
             current_scope.statements.push(statement);
-
-            // TODO(jwwishart) should checking for duplicates be done here automatically???
-
-            if (statement instanceof VariableDeclaration ||
-                statement instanceof StructDeclaration ||
-                statement instanceof FunctionDeclaration)
-            {
-                current_scope.identifiers.push(statement);
-
-                context.program.symbol_info.push(new SymbolInformation(
-                    statement.identifier,
-                    statement,
-                    current_scope));
-            }
-
-            if (statement instanceof FieldDefinition)
-            {
-                current_scope.identifiers.push(statement);
-
-                context.program.symbol_info.push(new SymbolInformation(
-                    statement.identifier,
-                    statement,
-                    current_scope));
-            }
         }
 
         function get_primitive_data_type_by_name(name) {
@@ -1218,14 +1205,10 @@ var erg;
             tokenizer = tokenizer_arg;
 
 
-            // Helper Functions
-            //
-
-
             // File Node Construction
             //
 
-            var file = new File(context.current_filename, context.program);
+            var file = new File(context.program, context.current_filename);
             context.program.files.push(file);
 
 
@@ -1479,7 +1462,7 @@ var erg;
 
         // TODO(jwwishart) this seems to compliated... can it be partially reused for parameters and field definitions?
         function parse_variable_declaration(current_scope, identifier, is_const) {
-            var variable_decl = new VariableDeclaration(identifier);
+            var variable_decl = new VariableDeclaration(current_scope, identifier);
             var data_type_name = 'any';
             var is_data_type_explicit = false;
             var is_assignment = false;
@@ -1636,8 +1619,16 @@ var erg;
 
             // TODO(jwwishart) 'const' might need to be assigned to variable_type
 
-            variable_decl.data_type = data_type_name;
+            variable_decl.type = create_type_definition('string');
+
             add_statement(current_scope, variable_decl);
+        }
+
+        function create_type_definition(type_name) {
+            // TODO(jwwishart) do we want to handle builtings HERE??? easier?
+            var result = new TypeDefinition(type_name, false);
+            context.unresolved_types.push(result);
+            return result;
         }
 
         function parse_field_assignment_expression(current_scope, data_type_name, expected_final_token) {
@@ -1874,7 +1865,9 @@ var erg;
                 if (info.found && !(info.decl instanceof FunctionDeclaration)) {
                     ERROR(peek(), "Identifier '" + identifier + "' is not a function");
                 } else {
-                    ERROR(peek(), "Function '" + identifier + "' cannot be found");
+// TODO(jwwishart) remove this to work on just getting the AST stucture and
+//  then work on type inference and dependency management stuff.
+// ERROR(peek(), "Function '" + identifier + "' cannot be found");
                 }
             }
 
@@ -1890,23 +1883,24 @@ var erg;
             var start_argument_list = peek();
 
             call.args = parse_function_call_arguments(current_scope, identifier);
-
-            if (call.args.length !== info.decl.parameters.length) {
-                ERROR(peek(), "Function '" + identifier + "' expects " + info.decl.parameters.length + " arguments but recieved " + call.args.length);
-            }
-
-            for (var i = 0; i < info.decl.parameters.length; i++) {
-                // TODO(jwwishart) note that we ONLY look at the type of the first prt of... 
-                //  the argument expression list... This MIGHT be adequate? or is it?
-                // TODO(jwwishart) if the first call.args[i][[0] item is just an identifier there is NO TYPE...
-                //  associated and we can't therefore testing (there is no data_type on it.. so we get cannot get
-                //  name of undefined.
-                if (info.decl.parameters[i].data_type !== 'any' &&
-                    info.decl.parameters[i].data_type !== call.args[i][0].data_type.name) 
-                {
-                    ERROR(start_argument_list, "Function '" + identifier + "' argument " + (i + 1)  + " expects type of " + info.decl.parameters[i].data_type + " but was given type of " + call.args[i][0].data_type.name);
-                }
-            }
+// TODO(jwwishart) temporarily for type inference and ast generation
+//
+//            if (call.args.length !== info.decl.parameters.length) {
+//                ERROR(peek(), "Function '" + identifier + "' expects " + info.decl.parameters.length + " arguments but recieved " + call.args.length);
+//            }
+//
+//            for (var i = 0; i < info.decl.parameters.length; i++) {
+//                // TODO(jwwishart) note that we ONLY look at the type of the first prt of... 
+//                //  the argument expression list... This MIGHT be adequate? or is it?
+//                // TODO(jwwishart) if the first call.args[i][[0] item is just an identifier there is NO TYPE...
+//                //  associated and we can't therefore testing (there is no data_type on it.. so we get cannot get
+//                //  name of undefined.
+//                if (info.decl.parameters[i].data_type !== 'any' &&
+//                    info.decl.parameters[i].data_type !== call.args[i][0].data_type.name) 
+//                {
+//                    ERROR(start_argument_list, "Function '" + identifier + "' argument " + (i + 1)  + " expects type of " + info.decl.parameters[i].data_type + " but was given type of " + call.args[i][0].data_type.name);
+//                }
+//            }
 
             expect_and_eat(TOKEN_TYPE_PAREN_CLOSE);
             expect_and_eat(TOKEN_TYPE_SEMICOLON);
@@ -1947,16 +1941,17 @@ var erg;
             do {
                 // TODO(jwwishart) this code should be able to be some by some helper function!
                 if (accept(TOKEN_TYPE_IDENTIFIER)) {
-                    var info = get_identifier_declaration_information(current_scope, peek().text);
-                    
-                    if (info === null || info.decl === null) {
-                        ERROR(peek(), "Identifier '" + peek().text + "' not found in scope");
-                    }
+// Warning: commented out temporarily MAYBE?
+// var info = get_identifier_declaration_information(current_scope, peek().text);
+// 
+// if (info === null || info.decl === null) {
+//     ERROR(peek(), "Identifier '" + peek().text + "' not found in scope");
+// }
 
                     // TODO(jwwishart) check that the identifier exists, is the right type etc!!!
                     parts.push(new Identifier(peek().text));
                 } else if (accept(TOKEN_TYPE_STRING_LITERAL)) {
-                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('string')));
+                    parts.push(new Literal(peek().text, __string));
                 } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
                     parts.push(new Literal(peek().text, get_primitive_data_type_by_name('bool')));
                 } else if (accept(TOKEN_TYPE_INTEGER_LITERAL)) {
@@ -1985,18 +1980,48 @@ var erg;
     }());
 
 
+    // @Type Inference -------------------------------------------------------
+
+    (function() {
+
+        var context = null;
+
+        erg.type_inference = function(context_arg) {
+            context = context_arg;
+
+            type_check();
+        };
+
+        function type_check() {
+            for (var i = 0; i < context.unresolved_types.length; i++) {
+                type_check_item(context.unresolved_types);
+            }
+        }
+
+        function type_check_item(item) {
+            ERROR(null, "WE ARE HERE");
+        }
+
+    }())
+
 
     // @Ast Nodes -------------------------------------------------------------
     //
 
-    function AstNode() {
-        this.tokens = [];
+    function AstNode(parent, tokens) {
+        this.parent = parent || null;
+        this.tokens = tokens || [];
+        
+        // Type: all nodes must have a type... I could be "void"...
+        //  of 'function' etc. It should be a TypeDefinition
+        this.type = __void; // Node has no type
+
+        // TODO(jwwishart) do we need this?)
+        //this.tokens = [];
     }
 
     function Scope(parent) {
-        AstNode.call(this); // Classical Inheritance. Make this item an AstNode
-
-        this.parent = parent; // only need to go UP the scope, not down...
+        AstNode.call(this, parent); // Classical Inheritance. Make this item an AstNode
         
         this.statements = [];
         this.deferreds = [];
@@ -2037,20 +2062,17 @@ var erg;
 
         this.files = [];
         this.types = [
-            // NOTE(jwwishart) the default value is RAW
-            // TODO(jwwishart) these should be: identifiers in program scope and should have full...
-            //  type declarations behind them: eg: Any, String, Integer, Float, Boolean etc...
-            //  and should be added to the program when here as standard types... How to do that?
-            new DataType('any',     'null',  true),
-            new DataType('string',  '',      true),
-            new DataType('int',     '0',     true),
-            new DataType('float',   '0.0',   true),
-            new DataType('bool',    'false', true)
-        ];
+            __void,
 
-        // Contains all symbols in the program
-        // TODO(jwwishart) don't think this is right... ?
-        this.symbol_info = [];
+            __null,
+            
+            __string,
+            __int,
+            __float,
+            __bool,
+
+            __any
+        ];
 
         // Builting Functions
         //
@@ -2073,7 +2095,7 @@ var erg;
     }
 
 
-    function File(name, program) {
+    function File(program, name) {
         Scope.call(this, program);
 
         this.filename = name;
@@ -2094,14 +2116,19 @@ var erg;
     ///     identifier      : the name of the variable
     ///     variable_type   : variable type (var, const)
     ///     data_type       : the data type as TypeDefinition
-    function VariableDeclaration(identifier, variable_type, data_type, init) {
-        AstNode.call(this, null);
+    function VariableDeclaration(parent, identifier, variable_type) {
+        AstNode.call(this, parent);
+
+        this.type = __any;
+
+        // Variable Declaration Specific Information
+        //
 
         this.identifier = identifier;
         this.variable_type = variable_type || 'var'; // var or const
-        this.data_type = data_type || 'any';
-        this.init = init || [];
         this.is_exported = identifier[0] !== '_';
+        
+        this.init = [];
     }
 
     function FieldDefinition(identifier, data_type, init) {
@@ -2187,7 +2214,7 @@ var erg;
         identifier,
         is_resolved, // Whether we can actually fill out the type information or NOT?
         default_value, // null for non-primitive types by default?
-        flags) 
+        flags)
     {
         this.identifier = identifier;
         this.is_resolved = is_resolved,
@@ -2207,14 +2234,14 @@ var erg;
         this.is_array = (flags && flags.is_array) || false;
     }
 
-    var __any = new TypeDefinition("Any", true, null /* primitive types have string value??? */, {
-        is_primitive: true,
-        keyword_synonym: 'any'
-    });
 
-    var __int = new TypeDefinition("Integer", true, '0', { 
-        is_primitive: true,
-        keyword_synonym: 'int'
+    // Pre-Defined, builting Type Definitions
+    //
+
+    var __void = new TypeDefinition("Void", true, null, { 
+        is_primitive: true, // ???
+        is_void: true,
+        keyword_synonym: 'void'
     });
 
     var __null = new TypeDefinition("Null", true, null, { 
@@ -2223,16 +2250,35 @@ var erg;
         keyword_synonym: 'null'
     });
 
-
-    var __void = new TypeDefinition("Void", true, null, { 
-        is_primitive: true, // ???
-        is_void: true,
-        keyword_synonym: 'void'
+    var __string = new TypeDefinition("String", true, '""', { 
+        is_primitive: true,
+        keyword_synonym: 'string'
     });
 
-    var __struct = new TypeDefinition("Person", true, null /* all custom types! */, {
+    var __int = new TypeDefinition("Integer", true, '0', { 
+        is_primitive: true,
+        keyword_synonym: 'int'
+    });
+
+    var __float = new TypeDefinition("Float", true, '0.0', { 
+        is_primitive: true,
+        keyword_synonym: 'float'
+    });
+
+    var __bool = new TypeDefinition("Boolean", true, 'false', { 
+        is_primitive: true,
+        keyword_synonym: 'bool'
+    });
+
+    var __any = new TypeDefinition("Any", true, 'null' /* primitive types have string value??? */, {
+        is_primitive: true,
+        keyword_synonym: 'any'
+    });
+
+
+    // var __struct = new TypeDefinition("Person", true, null /* all custom types! */, {
         
-    });
+    // });
 
 
     // @Data Types ------------------------------------------------------------
@@ -2595,9 +2641,7 @@ var erg;
 
                     if (node.init.length === 1 && node.init[0] instanceof Literal) {
                         if (node.init[0].value === null) {
-                            if (node.init[0].data_type) {
-                                value = node.init[0].data_type.default_value;
-                            }
+                            value = node.init[0].type.default_value;
                         } else {
                             value = node.init[0].value;
                         }
@@ -2606,10 +2650,8 @@ var erg;
                             value = 'null';
                         }
 
-                        if (node.init[0].data_type) {
-                            if (node.init[0].data_type.name === 'string') {
-                                value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
-                            }
+                        if (node.type.identifier === 'String') {
+                            value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
                         }
 
                         var note = '';

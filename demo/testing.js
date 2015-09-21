@@ -1,4 +1,4 @@
-// Generated: 2015-9-19 21:46
+// Generated: 2015-9-21 22:39
 
 "use strict";
 
@@ -13,12 +13,8 @@ function assert(condition, fail_message) {
 }
 
 // File Start: input_filename
-
-let Person = function() {
-        this.name = ''; 
-        this.age = 0; 
-};
-
+    let message = Hello World;
+    print(message);
 // File End: input_filename
 
 
