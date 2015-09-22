@@ -11,12 +11,24 @@
 
 */
 
+// Constants
+const1 :: 15;
+const2 :: "This is great!";
+
+print(const1);
+print(const2);
+
+//const3 :: const1;
+
+
+
 // Type Specified - No Assignment (default values assigned)
 type_string : string;   // Should be ''
 type_int    : int;      // Should be 0 (zero)
 type_float  : float;    // Should be 0.0 (zero)
 type_bool   : bool;     // should be false
 type_any    : any;      // should be null
+
 
 
 // Type Specified - Uninitialized (defaults values assigned ... this
@@ -42,10 +54,7 @@ no_type_int_init := 256;
 no_type_float_init := 1.5670
 no_type_bool_init := true;
 
-
-// Constants
-const1 :: 15;
-const2 :: "This is great!";
+/*
 
 
 // Re-Assignment
@@ -63,6 +72,7 @@ type_any = 1;
 type_any = 1.234;
 type_any = true;
 
+*/
 
 // Negatives...
 

@@ -180,6 +180,16 @@ var erg;
         return erg._global_constants[setName][number];
     }
 
+    // NOTE: This method ought to be able to be called at any point thus it is...
+    //  here.
+    // We could call this during parse to handle any type determineation that
+    //  we can at that point 
+    // THIS function ought to cache unhandled symbols for processing AFTER the
+    //  generation of the AST to fix up the last bits and pieces we could not
+    //  figure out types we could not figure out at the time.
+    function type_check(context, scope, node) {
+
+    }
 
     // @Exports ---------------------------------------------------------------
     //  
@@ -1083,20 +1093,6 @@ var erg;
             current_scope.statements.push(statement);
         }
 
-        function get_primitive_data_type_by_name(name) {
-            var result = null;
-
-            each(context.program.types, function(type) {
-                if (type.name === name) {
-                    result = type;
-                    return false;
-                }
-            });
-
-            return result;
-        }
-
-
         // TODO(jwwishart) should consider whether this NEEDS to look outside of 
         //  the FILE scope (i.e. should it see the program scope) and also
         //  whether it should see things IMPORTED (using statement) into the
@@ -1188,6 +1184,43 @@ var erg;
 
             return peek().type !== TOKEN_TYPE_EOF;
         }
+
+
+        // Type and Identifier Helper Functions
+        //
+
+        function register_identifier(current_scope, node) {
+            // TOdO(jwwishart) throw on duplidate definition)
+            // TODO(jwwishart) is this done elsewhere already?
+
+            current_scope.identifiers.push(node);
+        }
+
+        function check_identifier(current_scope, identifier) {
+
+        }
+
+        function get_identifier_info(current_scope, identifier) {
+
+        }
+
+        function find_type(current_scope, identifier) {
+            var result = null;
+
+            each(current_scope.types, function(type) {
+                if (type.identifier === identifier || (type.is_primitive && type.keyword_synonym === identifier)) {
+                    result = type;
+                    return false;
+                }
+            });
+
+            if (result == null && current_scope.parent != null) {
+                result = find_type(current_scope.parent, identifier);
+            }
+
+            return result;
+        }
+
 
         /// Parses tokens and constructs an ast on the program
         /// ast node that is passed in.
@@ -1463,7 +1496,11 @@ var erg;
         // TODO(jwwishart) this seems to compliated... can it be partially reused for parameters and field definitions?
         function parse_variable_declaration(current_scope, identifier, is_const) {
             var variable_decl = new VariableDeclaration(current_scope, identifier);
+
+            register_identifier(current_scope, variable_decl);
+
             var data_type_name = 'any';
+
             var is_data_type_explicit = false;
             var is_assignment = false;
             var is_explicitly_uninitialized = false;
@@ -1478,22 +1515,28 @@ var erg;
                 // TODO(jwwishart) what about assignment from another const?
                 // TODO(jwwishart) is this correct... should a type be able to be specified?
                 variable_decl.variable_type = 'const';
+
                 is_assignment = true;
             } else if (accept(TOKEN_TYPE_COLON_EQUALS)) {
                 is_assignment = true;
+
                 eat(); // :=
             } else if (accept(TOKEN_TYPE_SINGLE_COLON)) {
                 eat(); // :
 
                 is_data_type_explicit = true;
 
-                // data_type?
+                // We ought to have a type here...
                 if (expect(TOKEN_TYPE_IDENTIFIER)) {
                     data_type_name = peek().text;
 
                     eat(); // identifier
 
-                    // TODO(jwwishart) does the type exist. Add to scope and program, mark as unknown type
+                    // Try Determine Type
+                    var type = find_type(current_scope, data_type_name);
+                    if (type != null) {
+                        variable_decl.type = type;
+                    }
 
                     if (accept(TOKEN_TYPE_ASSIGNMENT)) {
                         is_assignment = true;
@@ -1510,29 +1553,30 @@ var erg;
                 eat(); // ---
             }
 
-            if (accept(TOKEN_TYPE_NEW_KEYWORD)) {
-                eat(); // 'new'
-
-                if (expect(TOKEN_TYPE_IDENTIFIER)) {
-                    (function() {
-                        var info = get_identifier_declaration_information(current_scope, peek().text);
-                        
-                        if (info === null || info.decl === null) {
-                            ERROR(peek(), "Identifier '" + peek().text + "' not found");
-                        }
-
-                        var init = new TypeInstantiation(peek().text);
-
-                        variable_decl.init = [init];
-
-                        eat();
-
-                        expect_and_eat(TOKEN_TYPE_SEMICOLON);
-
-                        is_type_instantiation = true;
-                    }());
-                }
-            }
+            // TODO(jwwishart) re-instate this)
+            // if (accept(TOKEN_TYPE_NEW_KEYWORD)) {
+            //     eat(); // 'new'
+            //     
+            //     if (expect(TOKEN_TYPE_IDENTIFIER)) {
+            //         (function() {
+            //             var info = get_identifier_declaration_information(current_scope, peek().text);
+            //             
+            //             if (info === null || info.decl === null) {
+            //                 ERROR(peek(), "Identifier '" + peek().text + "' not found");
+            //             }
+            //             
+            //             var init = new TypeInstantiation(peek().text);
+            //             
+            //             variable_decl.init = [init];
+            //             
+            //             eat();
+            //             
+            //             expect_and_eat(TOKEN_TYPE_SEMICOLON);
+            //             
+            //             is_type_instantiation = true;
+            //         }());
+            //     }
+            // }
 
             if (is_type_instantiation && is_explicitly_uninitialized === false) {
                 // ignore, we are done here!
@@ -1558,16 +1602,22 @@ var erg;
                     // TODO(jwwishart) what is can't infer the type?
                     // TODO(jwwishart) what if expression is NULL!!!
 
-                    var inferred_type = infer_type(expressions);
+                    // TODO(jwwishart) we are assuming we hare a literal
+                    //  need to handle custom types here!!!!
 
-                    if (is_data_type_explicit) {
-                        if (data_type_name === 'any') {
-                            // Is Don, is Good!
-                        } else if (is_null_literal(expressions) && data_type_name !== 'any') {
-                            ERROR(start_token, "Null can only be assigned to variables of type 'any' or custom type references");
-                        } else if (inferred_type.name === data_type_name) {
-                            // Is Don, is Good!
-                        } else {
+
+                    // WARNING(jwwishar)  CONSTS NEED THIS
+                    // TODO(jwwishart) better way? Constanst n
+                    variable_decl.type = expressions[0].type;
+                    
+                    //var inferred_type = infer_type(expressions);
+
+                    // Try and type check...
+                    if (is_data_type_explicit &&
+                        variable_decl.type.is_resolved &&
+                        variable_decl.type.identifier !== 'Any') 
+                    {
+                        if (variable_decl.type.identifier !== expressions[0].type.identifier) {
                             ERROR(start_token, "Expression of type '" + inferred_type.name + "' cannot be assigned to variable of type '" + data_type_name + "'.");
                         }
                     }
@@ -1595,40 +1645,30 @@ var erg;
                 // TODO(jwwishart) make this a function to handle JUST primitive types!
                 //      -- is_primitive_type
                 //      -- get_primitive_data_type_definition 
-                var literal_assignment_done = false;
-                switch(data_type_name) {
-                    case 'string':
-                    case 'int':
-                    case 'float':
-                    case 'bool':
-                        // Notice we sent NULL through for the value... we will use the data_type default value in this case!
-                        variable_decl.init.push(new Literal(null, get_primitive_data_type_by_name(data_type_name)));
-                        literal_assignment_done = true;
-                        break;
+
+
+                // Get TypeDefinition
+                var type = find_type(current_scope, data_type_name);
+                if (type != null) {
+                    variable_decl.type = type;
                 }
 
-                if (literal_assignment_done === false && is_explicitly_uninitialized === false) {
+                // TODO(jwwishart) what about custom type instantiation?
+                /*if (literal_assignment_done === false && is_explicitly_uninitialized === false) {
                     var info = get_identifier_declaration_information(current_scope, data_type_name);
 
                     if (info !== null && info.decl !== null && info.decl instanceof StructDeclaration) {
                         var init = new TypeInstantiation(data_type_name);
                         variable_decl.init = [init];
                     }
-                }
+                }*/
             }
 
             // TODO(jwwishart) 'const' might need to be assigned to variable_type
 
-            variable_decl.type = create_type_definition('string');
+            //variable_decl.type = create_type_definition(data_type_name);
 
             add_statement(current_scope, variable_decl);
-        }
-
-        function create_type_definition(type_name) {
-            // TODO(jwwishart) do we want to handle builtings HERE??? easier?
-            var result = new TypeDefinition(type_name, false);
-            context.unresolved_types.push(result);
-            return result;
         }
 
         function parse_field_assignment_expression(current_scope, data_type_name, expected_final_token) {
@@ -1949,15 +1989,15 @@ var erg;
 // }
 
                     // TODO(jwwishart) check that the identifier exists, is the right type etc!!!
-                    parts.push(new Identifier(peek().text));
+                    parts.push(new Identifier(null, peek().text));
                 } else if (accept(TOKEN_TYPE_STRING_LITERAL)) {
-                    parts.push(new Literal(peek().text, __string));
+                    parts.push(new Literal(null, __string, peek().text));
                 } else if (accept(TOKEN_TYPE_BOOLEAN_LITERAL)) {
-                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('bool')));
+                    parts.push(new Literal(null, __bool, peek().text));
                 } else if (accept(TOKEN_TYPE_INTEGER_LITERAL)) {
-                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('int')));
+                    parts.push(new Literal(null, __int, peek().text));
                 } else if (accept(TOKEN_TYPE_FLOAT_LITERAL)) {
-                    parts.push(new Literal(peek().text, get_primitive_data_type_by_name('float')));
+                    parts.push(new Literal(null, __float, peek().text));
                 } else if (accept(TOKEN_TYPE_NULL)) {
                     // No type!
                     parts.push(new Literal('null'));
@@ -1980,7 +2020,9 @@ var erg;
     }());
 
 
+    // TODO(jwwishart) implement
     // @Type Inference -------------------------------------------------------
+    //
 
     (function() {
 
@@ -1999,7 +2041,9 @@ var erg;
         }
 
         function type_check_item(item) {
-            ERROR(null, "WE ARE HERE");
+            if (item instanceof VariableDeclaration) {
+                
+            }
         }
 
     }())
@@ -2011,9 +2055,9 @@ var erg;
     function AstNode(parent, tokens) {
         this.parent = parent || null;
         this.tokens = tokens || [];
-        
+
         // Type: all nodes must have a type... I could be "void"...
-        //  of 'function' etc. It should be a TypeDefinition
+        //  of 'function' etc. It should be a SymbolInformation
         this.type = __void; // Node has no type
 
         // TODO(jwwishart) do we need this?)
@@ -2030,29 +2074,6 @@ var erg;
         this.identifiers = [];  // function and variable
     }
 
-
-
-    // Symbol information attached to program for ALL types
-    // which contains the identifier for the symbol, the declaration
-    // which might be a function decl,
-    // identifier = the variable/function/type name
-    // decl       = the declaration object (variable decl, function decl,
-    //              type decl.
-    // scope      = the scope containing the decl.
-    function SymbolInformation(identifier, decl, scope) {
-        AstNode.call(this);
-
-        this.identifier  = identifier;
-        this.declaration = decl;
-        this.scope       = scope;
-
-        // True ONLY WHEN all type information is resolved
-        // when all symbol information objects in
-        // the Program.symbol_info array are is_resolved == true
-        // then we are done type inference!
-        this.is_resolved = false;
-    }
-
     function Program() {
         AstNode.call(this, null);
 
@@ -2061,6 +2082,7 @@ var erg;
         }
 
         this.files = [];
+
         this.types = [
             __void,
 
@@ -2105,8 +2127,8 @@ var erg;
     }
 
 
-    function AsmBlock(raw_code) {
-        AstNode.call(this, null);
+    function AsmBlock(parent, raw_code) {
+        AstNode.call(this, parent);
 
         this.raw_code = raw_code;
     }
@@ -2116,7 +2138,7 @@ var erg;
     ///     identifier      : the name of the variable
     ///     variable_type   : variable type (var, const)
     ///     data_type       : the data type as TypeDefinition
-    function VariableDeclaration(parent, identifier, variable_type) {
+    function VariableDeclaration(parent, identifier) {
         AstNode.call(this, parent);
 
         this.type = __any;
@@ -2125,7 +2147,7 @@ var erg;
         //
 
         this.identifier = identifier;
-        this.variable_type = variable_type || 'var'; // var or const
+        this.variable_type = 'var'; // var or const
         this.is_exported = identifier[0] !== '_';
         
         this.init = [];
@@ -2165,7 +2187,7 @@ var erg;
     }
 
     function StructDeclaration(identifier, parent_scope) {
-        Scope.call(this, parent_scope)
+        Scope.call(this, parent_scope);
 
         this.identifier = identifier;
 
@@ -2173,7 +2195,7 @@ var erg;
     }
 
     function EnumDeclaration(identifier, parent_scope) {
-        Scope.call(this, parent_scope)
+        Scope.call(this, parent_scope);
 
         this.identifier = identifier;
 
@@ -2229,43 +2251,43 @@ var erg;
         this.is_void = (flags && flags.is_void) || false;
 
         this.is_function = (flags && flags.is_function) || false;
-        this.is_struct = (flags && flags.is_struct) || false;
-        this.is_enum = (flags && flags.is_enum) || false;
-        this.is_array = (flags && flags.is_array) || false;
+        this.is_struct   = (flags && flags.is_struct) || false;
+        this.is_enum     = (flags && flags.is_enum) || false;
+        this.is_array    = (flags && flags.is_array) || false;
     }
 
 
     // Pre-Defined, builting Type Definitions
     //
 
-    var __void = new TypeDefinition("Void", true, null, { 
+    var __void = new TypeDefinition("Void", true, null, {
         is_primitive: true, // ???
         is_void: true,
         keyword_synonym: 'void'
     });
 
-    var __null = new TypeDefinition("Null", true, null, { 
+    var __null = new TypeDefinition("Null", true, null, {
         is_primitive: true, // ???
         is_null: true,
         keyword_synonym: 'null'
     });
 
-    var __string = new TypeDefinition("String", true, '""', { 
+    var __string = new TypeDefinition("String", true, '""', {
         is_primitive: true,
         keyword_synonym: 'string'
     });
 
-    var __int = new TypeDefinition("Integer", true, '0', { 
+    var __int = new TypeDefinition("Integer", true, '0', {
         is_primitive: true,
         keyword_synonym: 'int'
     });
 
-    var __float = new TypeDefinition("Float", true, '0.0', { 
+    var __float = new TypeDefinition("Float", true, '0.0', {
         is_primitive: true,
         keyword_synonym: 'float'
     });
 
-    var __bool = new TypeDefinition("Boolean", true, 'false', { 
+    var __bool = new TypeDefinition("Boolean", true, 'false', {
         is_primitive: true,
         keyword_synonym: 'bool'
     });
@@ -2276,35 +2298,17 @@ var erg;
     });
 
 
-    // var __struct = new TypeDefinition("Person", true, null /* all custom types! */, {
-        
-    // });
+    function Literal(parent, type, value) {
+        AstNode.call(this, parent);
 
-
-    // @Data Types ------------------------------------------------------------
-    //
-
-    // TODO(jwwishart) should this be called PrimitiveType?
-    function DataType(name, default_value, is_builtin) {
-        if (default_value === undefined) {
-            default_value = 'null';
-        }
-
-        if (is_string(default_value) === false) {
-            throw new Error("DataType constructor must take a STRING representation for the default_value argument");
-        }
-
-        this.name = name;
-        this.default_value = default_value;
-        this.is_builtin = is_builtin;
-    }
-
-    function Literal(value, data_type) {
+        this.type = type || __void;
         this.value = value;
-        this.data_type = data_type;
     }
 
-    function Identifier(identifier) {
+    function Identifier(parent, identifier) {
+        AstNode.call(this, parent);
+
+        this.parent = parent;
         this.identifier = identifier;
     }
 
@@ -2317,6 +2321,18 @@ var erg;
         this.type_name = type_name;
     }
 
+
+    // TODO(jwwishart) do I want this stuff?
+    // @Dump Ast --------------------------------------------------------------
+    //
+
+    (function() {
+        var context = null;
+
+        erg.dump_ast = function(context_arg) {
+            context = context_arg;
+        }
+    }());
 
 
     // @Target ----------------------------------------------------------------
@@ -2634,12 +2650,26 @@ var erg;
             // VariableDeclaration
             if (node instanceof VariableDeclaration || node instanceof AssignmentStatement) {
                 (function() {
-                    var the_const = is_es6 ? 'const ' : '';
+                    var is_decl = node instanceof VariableDeclaration;
+                    var is_const = is_decl && node.variable_type === 'const';
+
+                    var decl_start = is_es6 ? (is_const ? 'const ' : 'let ') : (is_const ? 'var ' : 'var ');
+                    var start = is_decl ? decl_start : ''; // decl or just assignment;
+
+                    var note = is_decl && is_const ? ' // const' : '';
 
                     var value = 'null';
-                    var is_decl = node instanceof VariableDeclaration;
+                    
+                    if (is_decl && node.init.length === 0) {
+                        // Uninitialized Variable Declarations
+                        if (node.type.is_primitive) {
+                            value = node.type.default_value;
+                        }
 
-                    if (node.init.length === 1 && node.init[0] instanceof Literal) {
+                        push(start + node.identifier + ' = ' + value + ';');
+                    } else if (node.init.length === 1 && node.init[0] instanceof Literal) {
+                        // Initialized Variables OR Assignment Expression (1 only currently);
+                        // TODO(jwwishart) support expressions!!!
                         if (node.init[0].value === null) {
                             value = node.init[0].type.default_value;
                         } else {
@@ -2650,24 +2680,14 @@ var erg;
                             value = 'null';
                         }
 
+                        // Format Strings Primitives Properly
                         if (node.type.identifier === 'String') {
                             value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
                         }
 
-                        var note = '';
-                        var is_const = node.variable_type === 'const';
-                        if (is_const) {
-                            note = ' // const';
-                        }
-
-                        if (is_const && is_es6) {
-                            push((is_decl ? the_const : '') + node.identifier + ' = ' + value + ';' + note);
-                        } else {
-                            push((is_decl ? the_var : '') + node.identifier + ' = ' + value + ';' + note);
-                        }
-                        // TODO(jwwishart) handle further expressions
+                        push(start + node.identifier + ' = ' + value + ';' + note);
                     } else if (node.init.length === 1 && node.init[0] instanceof TypeInstantiation) {
-                        push((is_decl ? the_var : '') + node.identifier + ' = new ' + node.init[0].type_name + ';');
+                        push(start + node.identifier + ' = new ' + node.init[0].type_name + ';');
                     } else {
                         // TODO(jwwishart) assignment to a const not allowed!)
                         // TODO(jwwishart) Can above issue be resolved in the parser? Not here!!!

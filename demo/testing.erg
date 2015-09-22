@@ -1,13 +1,4 @@
 
+my_name :: "Justin Wishart";
 
-message := "Hello World";
-
-print(message);
-
-
-
-//message := _the_message;
-
-//print(message);
-
-//_the_message :: "Hello World";
+print(my_name);
