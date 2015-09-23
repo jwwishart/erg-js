@@ -1,4 +1,7 @@
 
-my_name :: "Justin Wishart";
+message := "FAIL!";
+condition : bool = false;
 
-print(my_name);
+condition = 1 == 1;
+
+assert(condition, message);

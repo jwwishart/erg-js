@@ -54,7 +54,6 @@ no_type_int_init := 256;
 no_type_float_init := 1.5670
 no_type_bool_init := true;
 
-/*
 
 
 // Re-Assignment
@@ -72,10 +71,8 @@ type_any = 1;
 type_any = 1.234;
 type_any = true;
 
-*/
 
 // Negatives...
-
 
 // TODO(jwwishart)
 // - const are not allowed to be changed (no assignment)

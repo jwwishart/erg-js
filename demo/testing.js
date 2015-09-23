@@ -1,4 +1,4 @@
-// Generated: 2015-9-22 21:21
+// Generated: 2015-9-23 22:6
 
 "use strict";
 
@@ -13,8 +13,9 @@ function assert(condition, fail_message) {
 }
 
 // File Start: input_filename
-    const my_name = 'Justin Wishart'; // const
-    print(my_name);
+    let message = 'FAIL!';
+    let condition = false;
+    assert(condition, message);
 // File End: input_filename
 
 

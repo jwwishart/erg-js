@@ -1,4 +1,4 @@
-// Generated: 2015-9-22 22:45
+// Generated: 2015-9-23 22:19
 
 "use strict";
 
@@ -35,6 +35,16 @@ function assert(condition, fail_message) {
     let no_type_string_init2 = 'Don\'t Sweat the single Quotes';
     let no_type_int_init = 256;
     let no_type_float_init = null;
+    type_string = 'Welcome';
+    type_int = 1234;
+    type_float = 1234.5678;
+    type_bool = true;
+    type_any = 'I\'ll just set as a string for the moment!';
+    type_any = null;
+    type_any = 'welcome home';
+    type_any = 1;
+    type_any = 1.234;
+    type_any = true;
 // File End: input_filename
 
 

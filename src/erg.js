@@ -1099,24 +1099,9 @@ var erg;
         //  scope or a scope up to the file scope?
         // TODO(jwwishart) considering the above. MAybe it is better ot rename this
         //  to something like can_see_identifier?
+        // TODO(jwwishart) remove... use get_identifier_info() instead.
         function get_identifier_declaration_information(current_scope, identifier) {
-            var cont = {
-                scope: current_scope,
-                level: -1, // current scope is 0, 1 is next scope up etc...
-
-                decl: null,
-                found: false,
-
-                in_current_scope: false
-            };
-
-            find_identifier_use(cont, identifier);
-    
-            if (cont.level === 0) {
-                cont.in_current_scope = true;
-            }
-
-            return cont;
+            return get_identifier_info(current_scope, identifier);
         }
 
         // TODO(jwwishart) See notes on get_identifier_declaration_information() as to
@@ -1134,7 +1119,6 @@ var erg;
             if (cont.scope instanceof FunctionDeclaration) {
                 each(cont.scope.parameters, function(item) {
                     if (item.identifier === identifier)  {
-                        cont.found = true;
                         cont.decl = item;
 
                         return false; // cancel loop!
@@ -1142,11 +1126,10 @@ var erg;
                 });
             }
 
-            if (cont.found === false) {
+            if (!cont.decl) {
                 each(cont.scope.identifiers, function(item) {
                     if (item.identifier === identifier) 
                     {
-                        cont.found = true;
                         cont.decl = item;
 
                         return false; // cancel loop!
@@ -1154,7 +1137,7 @@ var erg;
                 });
             }
 
-            if (!cont.found) {
+            if (!cont.decl) {
                 cont.scope = cont.scope.parent;
 
                 find_identifier_use(cont, identifier);
@@ -1196,12 +1179,21 @@ var erg;
             current_scope.identifiers.push(node);
         }
 
-        function check_identifier(current_scope, identifier) {
-
-        }
-
         function get_identifier_info(current_scope, identifier) {
+            var search_context = {
+                scope: current_scope,
+                in_current_scope: false,
+                decl: null,
+                level: -1
+            };
 
+            find_identifier_use(search_context, identifier);
+
+            if (search_context.level === 0) {
+                search_context.in_current_scope = true;
+            }
+
+            return search_context;
         }
 
         function find_type(current_scope, identifier) {
@@ -1359,7 +1351,8 @@ var erg;
                     (function() {
                         var is_type_instantiation = false;
                         var init = null;
-                        var info = null;
+                        var info = get_identifier_info(current_scope, identifier);
+                        var type = info && info.decl && info.decl.type || null;
 
                         if (accept(TOKEN_TYPE_NEW_KEYWORD)) {
                             // WARNING(jwwishart) this would normally be a heap allocation style situation
@@ -1368,9 +1361,11 @@ var erg;
                             eat(); // 'new'
 
                             if (expect(TOKEN_TYPE_IDENTIFIER)) {
-                                info = get_identifier_declaration_information(current_scope, peek().text);
+                                info = get_identifier_info(current_scope, peek().text);
                                 
-                                if (info === null || info.decl === null) {
+                                // We only want to check that the identifier exists.
+                                // TODO(jwwishart) do we need to get the type?
+                                if (info.decl === null) {
                                     ERROR(peek(), "Identifier '" + peek().text + "' not found.");
                                 }
 
@@ -1383,24 +1378,23 @@ var erg;
                                 is_type_instantiation = true;
                             }
                         } else {
-                            info = get_identifier_declaration_information(current_scope, identifier);
-
                             // Constants cannot be re-assigned another value...
-                            if (info && info.decl instanceof VariableDeclaration &&
+                            if (info.decl instanceof VariableDeclaration &&
                                 info.decl.variable_type === 'const') 
                             {
                                 ERROR(peek(), "Constant '" + identifier + "' cannot be changed");
                             }
 
                             // Cannot find identifier to assign the value to...
-                            if (info.found === false) {
+                            if (!info.decl) {
                                 ERROR(token, "Cannot assign value to undeclared identifier '" + identifier + "'");
                             }
                         }
 
 
                         // Start Statement Constructions and Parse Expressions
-                        var statement = new AssignmentStatement(identifier);
+                        var statement = new AssignmentStatement(current_scope, identifier);
+                        statement.type = type;
 
                         if (is_type_instantiation) {
                             statement.init = [init]
@@ -1409,7 +1403,7 @@ var erg;
 
                             // Type Checking
                             var inferred_type = infer_type(expressions);
-                            var expected_data_type = info.decl.data_type;
+                            var expected_data_type = info.decl.type;
 
                             // TODO(jwwishart) what is can't infer the type?
                             // TODO(jwwishart) what if expression is NULL!!!
@@ -1417,15 +1411,13 @@ var erg;
 
                             // TODO(jwwishart) should be 'any' or any custom data type
                             // that is defined as a struct (not sure about enums???)
-                            if (expected_data_type === 'any') {
-                                // Is Don, is Good!
-                            } else if (is_null_literal(expressions) && expected_data_type !== 'any') {
-                                // TODO(jwwishart) should strings be nullable?
-                                ERROR(start_token, "Null can only be assigned to variables of type 'any' or custom type references");
-                            } else if (inferred_type.name === expected_data_type) {
-                                // Is Don, is Good!
-                            } else {
-                                ERROR(peek(), "Expression of type '" + inferred_type.name + "' cannot be assigned to variable of type '" + expected_data_type + "'.");
+                            // Try and type check...
+                            if (info.decl.type.is_resolved &&
+                                info.decl.type.identifier !== 'Any') 
+                            {
+                                if (info.decl.type.identifier !== expressions[0].type.identifier) {
+                                    ERROR(start_token, "Expression of type '" + inferred_type.name + "' cannot be assigned to variable of type '" + data_type_name + "'.");
+                                }
                             }
                             
                             // Done! Add statement!
@@ -1911,7 +1903,7 @@ var erg;
                 }
             }
 
-            var call = new FunctionCall(identifier);
+            var call = new FunctionCall(current_scope, identifier);
             /*
                 - verify that the function exists (identifier exists representation is a function declaration or found imported)
                 - parse argument expressions (comma separated)
@@ -1922,7 +1914,7 @@ var erg;
 
             var start_argument_list = peek();
 
-            call.args = parse_function_call_arguments(current_scope, identifier);
+            parse_function_call_arguments(current_scope, call.args, identifier);
 // TODO(jwwishart) temporarily for type inference and ast generation
 //
 //            if (call.args.length !== info.decl.parameters.length) {
@@ -1948,24 +1940,21 @@ var erg;
             add_statement(current_scope, call);
         }
 
-        function parse_function_call_arguments(current_scope, identifier) {
+        function parse_function_call_arguments(current_scope, arg_list, identifier) {
             // TODO(jwwishart) this shoudl all be in parse_expressions...
             // literal
             // variable identifier
             // function identifier :oS
             // expression
             // complex expressions (function call results, structure references or namespaced member structure info.);
-            var results = [];
 
             do {
                 if (accept(TOKEN_TYPE_PAREN_CLOSE)) {
                     break;
                 }
 
-                results.push(parse_expression(current_scope, [TOKEN_TYPE_COMMA, TOKEN_TYPE_PAREN_CLOSE]));
+                arg_list.push(parse_expression(current_scope, [TOKEN_TYPE_COMMA, TOKEN_TYPE_PAREN_CLOSE]));
             } while (accept_and_eat(TOKEN_TYPE_COMMA));
-
-            return results;
         }
 
         function parse_expression(current_scope, expected_final_tokens) {
@@ -2178,11 +2167,10 @@ var erg;
     }
 
 
-    function AssignmentStatement(identifier, variable_decl, init) {
-        AstNode.call(this, null);
+    function AssignmentStatement(parent, identifier, init) {
+        AstNode.call(this, parent);
 
         this.identifier = identifier;
-        this.variable_decl = variable_decl;
         this.init = init || [];
     }
 
@@ -2222,12 +2210,17 @@ var erg;
         // TODO(jwwishart) default constant value... litearl like a variable declaration
     }
 
-    function FunctionCall(identifier) {
-        AstNode.call(this, null);
+    function FunctionCall(parent, identifier) {
+        AstNode.call(this, parent);
 
         this.identifier = identifier;
-        this.args = [];
+        this.args = new ArgumentList(this);
     }
+
+    function ArgumentList(parent) {
+        AstNode.call(this, parent);
+    }
+    ArgumentList.prototype = Object.create(Array.prototype);
 
 
     // @Type System -----------------------------------------------------------
@@ -2298,23 +2291,70 @@ var erg;
     });
 
 
-    function Literal(parent, type, value) {
+
+
+    // Comparison Operator Expressions
+    //
+
+    generate_global_constants("OPERATOR_TYPES", [
+        'OPERATOR_UNKNOWN', // TODO(jwwishart) should throw error!
+
+        'OPERATOR_EQUALS'
+    ]);
+
+
+    function Expression(parent) {
         AstNode.call(this, parent);
+    }
+
+    function Literal(parent, type, value) {
+        Expression.call(this, parent);
 
         this.type = type || __void;
         this.value = value;
     }
 
     function Identifier(parent, identifier) {
-        AstNode.call(this, parent);
+        Expression.call(this, parent);
 
         this.parent = parent;
         this.identifier = identifier;
     }
 
-    function BinaryOperator(text, token_type) {
-        this.text = text;
-        this.token_type = token_type;
+    function ExpressionBlock(parent) {
+        Expression.call(this, parent);
+
+        this.expression = null;
+    }
+
+    // WARNING: Use derived types
+    function _UnaryExpression(parent) {
+        Expression.call(this, parent);
+
+        this.operator = OPERATOR_UNKNOWN;
+        this.operand = null;
+    }
+
+    // WARNING: Use derived types
+    function _BinaryExpression(parent) {
+        Expression.call(this, parent);
+
+        this.lhs = null;
+        this.operator = OPERATOR_UNKNOWN;
+        this.rhs = null;
+    }
+
+    function EqualsExpression(parent) {
+        _BinaryExpression.call(this, parent);
+
+        // Equality Expression should Evaluate to true
+        this.type = __bool;
+
+        this.operator = OPERATOR_EQUALS;
+
+        // TODO(jwwishart)
+        // TODO(jwwishart) lhs and rhs need assigning to.
+        // TODO(jwwishart) Types must be the same of coerce to the same type!
     }
 
     function TypeInstantiation(type_name) {
@@ -2437,6 +2477,16 @@ var erg;
                 return false;
             }
 
+
+
+            function fix_strings(node, value) {
+                if (node && node.type && (node.type.identifier === 'String' || (node.type.identifier === 'Any' && node.init && node.init[0] && node.init[0].type && node.init[0].type.identifier === 'String'))) {
+                    value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
+                }
+
+                return value;
+            }
+
             // Program
             //
 
@@ -2487,22 +2537,7 @@ var erg;
             //     BEFORE we do standard Scope objects!
 
             if (node instanceof Literal) {
-                var literal_result = null;
-
-                // NOTE: inline, NOT prefixed!
-                (function() {
-                    var value = node.value;
-
-                    if (node.data_type) {
-                        if (node.data_type.name === 'string') {
-                            value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
-                        }
-                    }
-
-                    literal_result = value;
-                }());
-
-                return literal_result;
+                return fix_strings(node, node.value);
             }
 
             if (node instanceof Identifier) {
@@ -2598,10 +2633,10 @@ var erg;
                     for (var i = 0; i < node.args.length; i++) {
 
                         for (var j = 0; j < node.args[i].length; j++) {
-                            if (node.args[i][j] instanceof BinaryOperator) {
-                                build += " " + node.args[i][j].text + " ";
-                                continue;
-                            }
+                            //if (node.args[i][j] instanceof BinaryOperator) {
+                            //    build += " " + node.args[i][j].text + " ";
+                            //    continue;
+                            //}
 
                             build += process_ast(node.args[i][j], null);
                         }
@@ -2681,9 +2716,7 @@ var erg;
                         }
 
                         // Format Strings Primitives Properly
-                        if (node.type.identifier === 'String') {
-                            value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
-                        }
+                        value = fix_strings(node, value);
 
                         push(start + node.identifier + ' = ' + value + ';' + note);
                     } else if (node.init.length === 1 && node.init[0] instanceof TypeInstantiation) {
