@@ -6,6 +6,46 @@
 
 
 /*
+    I'm not sure how to approach this.
+
+    I think I might go back into the tokenizer and remove things like
+    combined characters (like := and move detection into the parser as that
+    is probably a better place to put them) I will probably still look at 
+    having comments handled by the tokenizer (?) or ... maybe note... maybe
+    move the logic into the parser also... m
+
+    maybe the tokenize can just be dumped and just the scanner be kept... as it 
+    really returns each individual token... I would just have to label them in their
+    groups (keywords, identifier, operator, whitespace, separator, number, etc...
+    , not sure if I need to still tokenize strings? maybe... not sure about number 
+    though as that maybe ought to be part of the parser... it needs to detect
+    negative numbers with exponents from separate things....
+
+    The tokenizer ought to just detect
+    keywords, identifier (_ and alpha numeric), string literals, numbers, symobols
+    etc,
+
+    tokenizer ought to tokenze everything in one go (?) or do we just go as needed
+    so the process will be quicker (maybe if we catch an error earlier? not sure
+    would maybe depend on a lot of things.
+
+
+
+    As for the parser just move closer to recursive descent (or things I've learnt about it
+     as this point, some of helps)
+
+    Try and make it include everything possible... no point wasting anything.
+
+    as for parser chekcing make that a post process iterating through ast
+    It should generate identifier binding information (this symbol is in this 
+    scope, check re-duplication etc) if type then check it is accessible in scope
+    then do type checking etc...
+
+    Then do generation as per currently I suppose
+ */
+
+
+/*
 
 FOCUS: type system
   - how to specify the type of an identifier
