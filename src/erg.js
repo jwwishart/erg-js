@@ -22,8 +22,7 @@
     negative numbers with exponents from separate things....
 
     The tokenizer ought to just detect
-    keywords, identifier (_ and alpha numeric), string literals, numbers, symobols
-    etc,
+    - keywords, identifiers, operators, delimiters , literals and whitespace (comments included in this?)
 
     tokenizer ought to tokenze everything in one go (?) or do we just go as needed
     so the process will be quicker (maybe if we catch an error earlier? not sure
