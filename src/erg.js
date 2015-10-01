@@ -1114,31 +1114,73 @@ var erg;
         }
 
         function parse_declaration(scope, identifier) {
-            parse_variable_declaration(scope, identifier);
-            parse_function_declaration(scope, identifier);
-            parse_structure_declaration(scope, identifier);
-            parse_enum_declaration(scope, identifier);
+            parse_struct(scope, identifier);        // ident :: struct {
+            parse_enum(scope, identifier);          // ident :: enum {
+            parse_function(scope, identifier);      // ident :: (
+            parse_variable(scope, identifier);      // ident :: expression
         }
 
-        function parse_variable_declaration(scope, identifier) {
-            if (accept(":=")) {
-                parse_expression(scope);
-            }
+            function parse_struct(scope, identifier) {
+                if (accept("::")) {
+                    eat();
+                    if (accept("struct")) {
+                        eat()
 
-            if (accept("::")) {
-                parse_constant_expression(scope);
-            }
+                        var struct_decl = new StructDeclaration(scope /* parent */); 
+                        struct_decl.name = identifier;
 
-            if (accept(":")) {
-                parse_type(scope);
-                if (accept("=")) {
-                    parse_expression(scope);
+                        parse_struct_block(struct_decl)
+                    }
                 }
             }
 
-            expect(';');
-        }
+                function parse_struct_block(struct_decl) {
+                    expect("{"};
+                    parse_struct_fields(struct_decl)
+                    expect("}");
+                }
 
+                function parse_struct_fields(struct_decl) {
+                    while (parse_struct_field(struct_decl)) {
+                        var field_decl = struct_decl.items[struct_decl.items.length - 1];
+
+                        if (peek().type !== "}") {
+                            expect(";");
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                    function parse_struct_field(struct_decl) {
+                        expect("identifier");
+                        var identifier = peek().text;
+                        var field_decl = new StructFieldDeclaration(struct_decl);
+                        field_decl.items.push(field_
+                        // TODO(jwwishart) identifier
+                        if (accept("=")) {
+
+                        }
+                    }
+
+            function parse_variable(scope, identifier) {
+                if (accept(":=")) {
+                    parse_expression(scope);
+                }
+
+                if (accept("::")) {
+                    parse_constant_expression(scope);
+                }
+
+                if (accept(":")) {
+                    parse_type(scope);
+                    if (accept("=")) {
+                        parse_expression(scope);
+                    }
+                }
+
+                expect(';');
+            }
 
     }());
 
@@ -1161,7 +1203,7 @@ var erg;
     function Scope(parent) {
         AstNode.call(this, parent); // Classical Inheritance. Make this item an AstNode
         
-        this.statements = [];
+        this.items = [];
         this.deferreds = [];
 
         this.types = [];        // enum, structs (built in types if on program)
