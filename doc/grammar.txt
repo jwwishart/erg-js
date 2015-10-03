@@ -1,3 +1,85 @@
+
+// Common re-used items
+
+    newline = \n | \r | \r\n | U+000A | U+000D | U+000A | U+000DU+000A
+
+    letter     = "A"..."Z" // exclude newlines and numbers :o)
+    digit     = "0"..."9"
+
+    identifier = ["_"] | { letter | "_" | number } 
+    type = identifier | function-type | struct-type | enum-type | ???????
+
+    keyword = "asm" | "struct" | "enum" |
+              "break" | "continue" | "return" |
+              "switch" | "if" | "else"
+
+
+    directive = "#" directive directive value (newline | EOF)
+
+    comment-one-line = "//" string (newline | EOF)
+    comment-multiline = "/*" any string ( "*/" | EOF) // nesting allowed!
+
+    integer-literal = ["+" | "-"] digit {digit}
+    float-literal   = ["+" | "-"] digit "." [digit] // exponents?
+    string-literal = '"' [{any-character EXCEPT newline }] '"' ???
+
+    literal = string-literal | float-literal | integer-literal
+
+
+// Take it from the Top
+
+    global-scope = program-scope
+
+    program-scope = file-scope { "|" file-scope }
+
+    file-scope = 
+
+    block = "{" {statement} | empty-statement "}"
+    empty-statement = ";"
+    
+    statement-block = block // alias?
+
+    statement = variable-decl | function-decl | if-statement
+
+    if-statement = "if" TODO TODO TODO
+
+    // Variables and Constants
+    // 
+
+    // WARNING: in js expression is fine at program scope, not likely...
+    //  in a compiled x86 style target thought.
+
+    variable-decl = identifier ":=" expression ";" 
+                  | identifier "::" constant-expression ";"
+                  | identifier ":" type ["=" expression] ";"
+ 
+
+    // Function Decl
+    //
+
+    function-decl = identifier "::" "(" ParameterList ")" [=>] statement-block
+    parameter-list = {identifier ":" type ["=" literal] "," } 
+                   | {identifier ":" type ["=" literal]} 
+
+
+    // Structs
+    //
+
+    structure = identifier "::" "struct" struct-block
+    struct-block = "{" {field-declaration-list} "}"
+    field-declaration-list = {field-declaration ","} | field-declaration. 
+    field-declaration = identifier ":" type ["=" constant-expression]
+
+    // Enums
+    // 
+
+    enum = identifier "::" "enum" [type] enum-block
+    enum-block = "{" {enum-declaration-list} "}"
+    enum-declaration-list = {enum-declaration ","} | enum-declaration.
+    enum-declration = identifier ["=" constant-expression]
+
+
+
 program-scope = file-scope*
 
 file-scope = statement*

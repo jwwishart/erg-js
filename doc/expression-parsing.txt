@@ -1,0 +1,54 @@
+
+
+200 == 2000;
+true == false;
+100 == cast(100.00, int); // either way... as long as one is a type???
+CONST_VALUE == 235;
+func_result() == ""; // NOT a reference comparison but a VALUE comparison.
+
+(200 == 235235);
+
+ExpressionBlock
+    expression = new EqualsExpression()
+        lhs: 200,
+        operator = EQUALS
+        rhs: 235235
+
+200 == 215 + 12;
+
+
+EqualsExpression
+    lhs: 200
+    operator: equals
+    rhs: AdditionExpression
+        lhs: 215
+        operator: +
+        rhs:  12;
+
+How do we process this in such a way that precendence rules
+
+another example
+
+200 - 1235 * 12 + 12
+
+THIS IS WRONG AS MULTIPLICATION SHOULD NOT HAS EXPRESSION ON RHS THAT IS 
+ADDITION EXPRESSION
+
+SubtractionExpression
+    lhs: 200
+    operator: -
+    rhs: MultiplicationExpression
+        lhs: 1235
+        operator: x
+        rhs: AdditionExpression
+            lhs: 12
+            operator: +
+            rhs: 12;
+
+.. so how do we:
+- structure the ast correctly
+- test everything correctly
+- determine the final resultant type
+- handle function calls
+- handle identifiers
+- etc...

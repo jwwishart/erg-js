@@ -1,4 +1,4 @@
-// Generated: 2015-9-21 22:39
+// Generated: 2015-9-23 22:6
 
 "use strict";
 
@@ -13,8 +13,9 @@ function assert(condition, fail_message) {
 }
 
 // File Start: input_filename
-    let message = Hello World;
-    print(message);
+    let message = 'FAIL!';
+    let condition = false;
+    assert(condition, message);
 // File End: input_filename
 
 
