@@ -428,6 +428,7 @@ var erg;
         function handle_single_character_token(type) {
             var result = create_token(type);
             eat();
+            c = peek();
             return result;
         }
 
@@ -702,9 +703,10 @@ var erg;
                             token = create_token(TOKEN_TYPE_TRIVIA_WHITESPACE, c);
                             eat();
 
-                            while (move_next() && is_whitespace()) {
+                            while ((c= peek() !== null) && is_whitespace()) {
                                 token.text += c;
                                 eat();
+                                c = peek();
                             }
 
                             return token;
@@ -781,7 +783,7 @@ var erg;
                         // :=
                         if (c === ':') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_COLON);
-                            
+
                             if (c === '=') { // :=
                                 token.type = TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN;
                                 token.text = ':=';
@@ -878,7 +880,7 @@ var erg;
                         // %=
                         if (c === '%') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_REMAINDER);
-
+                            
                             if (c === '=') { // %=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_REMAINDER_EQUALS;
@@ -892,7 +894,7 @@ var erg;
                         // ==
                         if (c === '=')  {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_ASSIGNMENT);
-
+                            
                             if (c === '=') { // ==
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_EQUALS;
@@ -906,7 +908,7 @@ var erg;
                         // !=
                         if (c === '!') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_NEGATE);
-
+                            
                             if (c === '=') { // !=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_NOT_EQUALS;
@@ -920,7 +922,7 @@ var erg;
                         // <=
                         if (c === '<') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_LESS_THAN);
-
+                            
                             if (c === '=') { // <=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_LESS_THAN_EQUAL_TO;
@@ -934,7 +936,7 @@ var erg;
                         // >=
                         if (c === '>') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_GREATER_THAN);
-
+                            
                             if (c === '=') { // >=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_GREATER_THAN_EQUAL_TO;
@@ -948,7 +950,7 @@ var erg;
                         // &&
                         if (c === '&') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_AND_BITWISE);
-
+                            
                             if (c === '&') {
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_AND;
@@ -962,7 +964,7 @@ var erg;
                         // ||
                         if (c === '|') {
                             token = handle_single_character_token(TOKEN_TYPE_OPERATOR_OR_BITWISE);
-
+                            
                             if (c === '|') {
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_OR;
@@ -1047,6 +1049,8 @@ var erg;
         var context = null;
         var tokenizer = null;
 
+        var gathered_trivia = [];
+
         // TODO(jwwishart) finish this off!)
         var past_tokens = [];
 
@@ -1089,9 +1093,17 @@ var erg;
             return tokenizer.peek();
         }
 
-        function eat(scope) {
-            if (scope == null) throw new Error("eat() must be given scope to eat trivia!");
+        function eat_only() {
             tokenizer.eat();
+        }
+
+        function eat(item) {
+            if (item != null) apply_pre_trivia(item);
+
+            tokenizer.eat();
+
+            if (item != null) parse_trivia();
+            if (item != null) apply_post_trivia(item);
         }
 
         function accept(token_type) {
@@ -1161,6 +1173,15 @@ var erg;
             return true;
         }
 
+        function apply_pre_trivia(item) {
+            item.pre_trivia = gathered_trivia;
+            gathered_trivia = [];
+        }
+
+        function apply_post_trivia(item) {
+            item.post_trivia = gathered_trivia;
+            gathered_trivia = [];
+        }
 
 
         // @Parse Functions ---------------------------------------------------
@@ -1187,9 +1208,6 @@ var erg;
         }
 
         function parse_statement(scope) {
-            // parse_trivia deals with whitespace so get everything from here on.
-            if (parse_trivia(scope)) return true;
-
             if (parse_identifier(scope)) return true;
 
             if (parse_if_statement(scope)) return true;
@@ -1200,59 +1218,61 @@ var erg;
             return false;
         }
 
-        function parse_trivia(scope) {
-            var result = false;
-            var trivia = new Trivia(scope);
-
+        function parse_trivia() {
             while (accept(TOKEN_TYPE_TRIVIA_NEWLINE)
                 || accept(TOKEN_TYPE_TRIVIA_WHITESPACE)
                 || accept(TOKEN_TYPE_TRIVIA_COMMENT_LINE)
-                || accept(TOKEN_TYPE_TRIVIA_COMMENT_MULTIPLE)) 
+                || accept(TOKEN_TYPE_TRIVIA_COMMENT_MULTIPLE)
+                || accept(TOKEN_TYPE_EOF)) 
             {
-                trivia.tokens.push(peek());
-                eat();
-                result = true;
+                gathered_trivia.push(peek());
+                eat_only(); // Don't do a normal eat as it calls parse_trivia :o)
+
+                if (peek().type === TOKEN_TYPE_EOF) {
+                    break;
+                }
             }
 
-            if (result === true) {
-                scope.items.push(trivia);
-            }
 
-            return peek().type === TOKEN_TYPE_EOF;
+            if (peek().type === TOKEN_TYPE_EOF) {
+                return true; // we are done processing statements
+            }
 
             // TODO(jwwishart) parse_comments(scope);
             // TODO(jwwishart) parse_multiline_comments;
-            return result;
+            return false; // we have more to parse... let other statements be processed
         }
 
         function parse_identifier(scope) {
-            if (parse_declaration(scope)) return true;
+            if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
-            parse_function_call(scope);
+            if (accept(TOKEN_TYPE_IDENTIFIER)) {
+                var identifier = new Identifier(null);
+                identifier.text = peek().text;
+                eat(identifier);
+            }
+
+            if (parse_declaration(scope, identifier)) return true;
+
+            if (parse_function_call(scope)) return true;
+
+            return false;
         }
 
-        function parse_declaration(scope) {
-            var identifier = null;
-            if (accept(TOKEN_TYPE_IDENTIFIER)) {
-                identifier = peek().text;
-                eat();
-
-                // TODO(jwwishart) parse_struct(scope, identifier);        // ident :: struct {
-                // TODO(jwwishart) parse_enum(scope, identifier);          // ident :: enum {
-                // TODO(jwwishart) parse_function(scope, identifier);      // ident :: (
-                if (parse_variable(scope, identifier)) return true;        // ident :: expression
-
-                return false;
-            }
+        function parse_declaration(scope, identifier) {
+            // TODO(jwwishart) parse_struct(scope, identifier);        // ident :: struct {
+            // TODO(jwwishart) parse_enum(scope, identifier);          // ident :: enum {
+            // TODO(jwwishart) parse_function(scope, identifier);      // ident :: (
+            if (parse_variable(scope, identifier)) return true;        // ident :: expression
 
             return false;
         }
 
             function parse_struct(scope, identifier) {
                 if (accept("::")) {
-                    eat();
+                    eat(scope);
                     if (accept("struct")) {
-                        eat()
+                        eat(scope)
 
                         var struct_decl = new StructDeclaration(scope /* parent */); 
                         struct_decl.name = identifier;
@@ -1269,7 +1289,8 @@ var erg;
                 }
 
                 function parse_struct_fields(struct_decl) {
-                    while (parse_struct_field(struct_decl)) {
+                    while (parse_str
+                        uct_field(struct_decl)) {
                         var field_decl = struct_decl.items[struct_decl.items.length - 1];
 
                         if (peek().type !== "}") {
@@ -1292,9 +1313,11 @@ var erg;
                     }
 
             function parse_variable(scope, identifier) {
-                var variable_decl = new VariableDeclaration(scope, identifier);
+                var variable_decl = new VariableDeclaration(scope);
+                variable_decl.items.push(identifier);
 
                 if (accept(TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN)) {
+                    variable_decl.items.push(peek());
                     eat();
 
                     return parse_expression(scope);
@@ -1316,6 +1339,60 @@ var erg;
                 throw new Error("FIX ME!");
             }
 
+        function parse_expression_statement(scope) {
+            var statement = new ExpressionStatement(scope);
+            parse_expression(statement);
+        }
+
+        function parse_expression(scope) {
+            var expression = new Expression(scope);
+
+            while (parse_term(scope)) {
+                if (add_op == true) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            return expression;
+        }
+
+        function parse_term(scope) {
+            var term = new Term(scope);
+
+            while (parse_factor(scope)) {
+                if (multiplop == true) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            return term;
+        }
+
+        function parse_factor(scope) {
+            if ("(") {
+                var factor = new Factor();
+                parse_expression(factor);
+                return factor; // This 
+            }
+
+            if (LITERAL!) {
+                var factor = new Factor();
+                factor.items.push(LITERAL);
+                return factor;
+            }
+
+            // TODO(jwwishart) function_call
+            // TODO(jwwishart) identifier
+            // TODO(jwwishart) member_access_expression
+            // TODO(jwwishart) assignment_expression
+            // TODO(jwwishart) unary_expression
+            // TODO(jwwishart) binary-expressoin
+        }
+
     }());
 
 
@@ -1327,11 +1404,22 @@ var erg;
         this.parent = parent;
 
         this.type = __void; // Node has no type
+
+        this.pre_trivia = [];
+        this.items = [];
+        this.post_trivia = [];
     }
 
-    function Trivia(parent) {
+    function Identifier(parent) {
         AstNode.call(this, parent);
-        this.tokens = [];
+
+    }
+
+
+    function VariableDeclaration(parent, identifier) {
+        AstNode.call(this, parent);
+
+        this.type = __any;
     }
 
 
@@ -1404,25 +1492,7 @@ var erg;
         this.raw_code = raw_code;
     }
     
-    ///
-    /// Arguments
-    ///     identifier      : the name of the variable
-    ///     variable_type   : variable type (var, const)
-    ///     data_type       : the data type as TypeDefinition
-    function VariableDeclaration(parent, identifier) {
-        AstNode.call(this, parent);
 
-        this.type = __any;
-
-        // Variable Declaration Specific Information
-        //
-
-        this.identifier = identifier;
-        this.variable_type = 'var'; // var or const
-        this.is_exported = identifier[0] !== '_';
-        
-        this.init = [];
-    }
 
     function FieldDefinition(identifier, data_type, init) {
         AstNode.call(this, null);
