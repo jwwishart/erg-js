@@ -216,7 +216,7 @@ var erg;
     ///     options : a map of options for the complier 
     ///
     /// Returns:
-    ///     The compiled output (JavaScript in this case)
+    /// The compiled output (JavaScript in this case)
     erg.compile = function (files, options) {
         var result = '';
 
@@ -240,7 +240,7 @@ var erg;
             var tokenizer = erg.tokenize(context, scanner);
             
             erg.parse(context, tokenizer);
-            erg.type_inference(context);
+            //erg.type_inference(context);
 
             result += erg.target(context) + "\n\n\n";
         });
@@ -393,11 +393,9 @@ var erg;
     ]);
 
 
-    var Token = function(type, lexeme) {
+    var Token = function(type) {
         this.type = type;
         this.type_name = get_global_constant_name('TOKEN_TYPES', type);
-        this.text = lexeme.text;
-
     };
 
     erg.Token = Token;
@@ -1052,16 +1050,13 @@ var erg;
         // TODO(jwwishart) finish this off!)
         var past_tokens = [];
 
+
         /// Parses tokens and constructs an ast on the program
         /// ast node that is passed in.
         ///
         /// Parameters:
         ///     files   : a map of filename > code
         ///     options : a map of options for the complier 
-        ///
-        /// Returns:
-        ///     The compiled o
-        utput (JavaScript in this case)
         erg.parse = function(context_arg, tokenizer_arg) {
             past_tokens = []; // Queue for non-whitespace tokens only. Handled in eat();
 
@@ -1081,43 +1076,176 @@ var erg;
 
             var scope = file;
 
-            // Move to first important thing!
-            eat_non_important_tokens();
-
-            while (get_while_condition()) {
-                parse_file(scope);
-            }
+            // TODO(jwwishart) need to handle this and make sure that everything...
+            //  actually returns correct true/false values.
+            return parse_file(scope);
         };
 
+
+        // @Parser-Helpders ---------------------------------------------------
+        //
+
+        function peek() {
+            return tokenizer.peek();
+        }
+
+        function eat(scope) {
+            if (scope == null) throw new Error("eat() must be given scope to eat trivia!");
+            tokenizer.eat();
+        }
+
+        function accept(token_type) {
+            if (peek().type === TOKEN_TYPE_EOF) {
+                return false;
+            }
+
+            if (is_array(token_type)) {
+                var found = false;
+
+                each(token_type, function(val) {
+                    if (peek().type === val) {
+                        found = true;
+                        return false;
+                    }
+                });
+
+                if (found === true) return true;
+            } else {
+                if (peek().type === token_type) {
+                    return true; // The requested token
+                }
+            }
+
+            return false; // Not the requested token
+        }
+
+        function expect(token_type) {
+            if (peek().type === TOKEN_TYPE_EOF) {
+                // TODO(jwwishart) if the line is blank move back to previous non-blank line and ...
+                //  find the last non-whitespace character... that ought to be the location!
+                // TODO(jwwishart) perf?
+                var location_info = {
+                    filename: _current_compiler_context.current_filename,
+                    line_no:  _current_compiler_context.current_code.split("\n").length,
+                    col_no:   _current_compiler_context.current_code.split("\n")[_current_compiler_context.current_code.split("\n").length-1].length + 1,
+                };
+
+                ERROR(location_info, "Unexpected end of file. Was expecting token of type: " + get_global_constant_name('TOKEN_TYPES', token_type));
+            }
+
+            if (is_array(token_type)) {
+                var found_match = false;
+
+                each(token_type, function(val) {
+                    if (peek().type === val) {
+                        found = true;
+                        return false;
+                    }
+                });
+
+                if (found === true) return true;
+
+
+                var token_labels = [];
+                each(token_type, function(item) {
+                    token_labels.push(get_global_constant_name('TOKEN_TYPES', item));
+                });
+
+                ERROR(peek(), "Unexpected token: Expecting one of " + token_labels.join(",") + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
+            } else {
+                if (peek().type !== token_type) {
+                    ERROR(peek(), "Unexpected token: Expecting " + get_global_constant_name('TOKEN_TYPES', token_type) + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
+                }
+            }
+
+            return true;
+        }
+
+
+
+        // @Parse Functions ---------------------------------------------------
+        //
+
         function parse_file(scope) {
-            parse_statement_block(scope);
+            return parse_statement_block(scope);
         }
 
         function parse_statement_block(scope) {
-            parse_statement(scope);
+            while (parse_statement(scope)) {
+                var field_decl = scope.items[scope.items.length - 1];
+
+                if (peek().type !== TOKEN_TYPE_OPERATOR_BRACE_CLOSE &&
+                    peek().type !== TOKEN_TYPE_EOF) 
+                {
+                    expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
+                } else {
+                    break;
+                }
+            }
+
+            return true;
         }
 
         function parse_statement(scope) {
-            parse_identifier(scope);
+            // parse_trivia deals with whitespace so get everything from here on.
+            if (parse_trivia(scope)) return true;
 
-            // Keywords
-            parse_if_statement(scope);
-            parse_asm_statement(scope);
+            if (parse_identifier(scope)) return true;
 
-            parse_empty_statement(scope);
+            if (parse_if_statement(scope)) return true;
+            if (parse_asm_statement(scope)) return true;
+
+            if (parse_empty_statement(scope)) return true;
+
+            return false;
+        }
+
+        function parse_trivia(scope) {
+            var result = false;
+            var trivia = new Trivia(scope);
+
+            while (accept(TOKEN_TYPE_TRIVIA_NEWLINE)
+                || accept(TOKEN_TYPE_TRIVIA_WHITESPACE)
+                || accept(TOKEN_TYPE_TRIVIA_COMMENT_LINE)
+                || accept(TOKEN_TYPE_TRIVIA_COMMENT_MULTIPLE)) 
+            {
+                trivia.tokens.push(peek());
+                eat();
+                result = true;
+            }
+
+            if (result === true) {
+                scope.items.push(trivia);
+            }
+
+            return peek().type === TOKEN_TYPE_EOF;
+
+            // TODO(jwwishart) parse_comments(scope);
+            // TODO(jwwishart) parse_multiline_comments;
+            return result;
         }
 
         function parse_identifier(scope) {
-            parse_declaration(scope);
+            if (parse_declaration(scope)) return true;
 
             parse_function_call(scope);
         }
 
-        function parse_declaration(scope, identifier) {
-            parse_struct(scope, identifier);        // ident :: struct {
-            parse_enum(scope, identifier);          // ident :: enum {
-            parse_function(scope, identifier);      // ident :: (
-            parse_variable(scope, identifier);      // ident :: expression
+        function parse_declaration(scope) {
+            var identifier = null;
+            if (accept(TOKEN_TYPE_IDENTIFIER)) {
+                identifier = peek().text;
+                eat();
+
+                // TODO(jwwishart) parse_struct(scope, identifier);        // ident :: struct {
+                // TODO(jwwishart) parse_enum(scope, identifier);          // ident :: enum {
+                // TODO(jwwishart) parse_function(scope, identifier);      // ident :: (
+                if (parse_variable(scope, identifier)) return true;        // ident :: expression
+
+                return false;
+            }
+
+            return false;
         }
 
             function parse_struct(scope, identifier) {
@@ -1135,7 +1263,7 @@ var erg;
             }
 
                 function parse_struct_block(struct_decl) {
-                    expect("{"};
+                    expect("{");
                     parse_struct_fields(struct_decl)
                     expect("}");
                 }
@@ -1156,7 +1284,7 @@ var erg;
                         expect("identifier");
                         var identifier = peek().text;
                         var field_decl = new StructFieldDeclaration(struct_decl);
-                        field_decl.items.push(field_
+                        field_decl.items.push(field_decl);
                         // TODO(jwwishart) identifier
                         if (accept("=")) {
 
@@ -1164,12 +1292,18 @@ var erg;
                     }
 
             function parse_variable(scope, identifier) {
-                if (accept(":=")) {
-                    parse_expression(scope);
+                var variable_decl = new VariableDeclaration(scope, identifier);
+
+                if (accept(TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN)) {
+                    eat();
+
+                    return parse_expression(scope);
                 }
 
+                scope.items.push(variable_decl);
+
                 if (accept("::")) {
-                    parse_constant_expression(scope);
+                    return parse_constant_expression(scope);
                 }
 
                 if (accept(":")) {
@@ -1179,7 +1313,7 @@ var erg;
                     }
                 }
 
-                expect(';');
+                throw new Error("FIX ME!");
             }
 
     }());
@@ -1188,17 +1322,18 @@ var erg;
     // @Ast Nodes -------------------------------------------------------------
     //
 
-    function AstNode(parent, tokens) {
-        this.parent = parent || null;
-        this.tokens = tokens || [];
 
-        // Type: all nodes must have a type... I could be "void"...
-        //  of 'function' etc. It should be a SymbolInformation
+    function AstNode(parent) {
+        this.parent = parent;
+
         this.type = __void; // Node has no type
-
-        // TODO(jwwishart) do we need this?)
-        //this.tokens = [];
     }
+
+    function Trivia(parent) {
+        AstNode.call(this, parent);
+        this.tokens = [];
+    }
+
 
     function Scope(parent) {
         AstNode.call(this, parent); // Classical Inheritance. Make this item an AstNode

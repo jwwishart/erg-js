@@ -1,7 +1,2 @@
 
-message := "FAIL!";
-condition : bool = false;
-
-condition = 1 == 1;
-
-assert(condition, message);
+message : string = "welcome"; 
