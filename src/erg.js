@@ -1373,15 +1373,17 @@ var erg;
         }
 
         function parse_factor(scope) {
-            if ("(") {
+            if (accept(TOKEN_TYPE_OPERATOR_PAREN_OPEN) {
                 var factor = new Factor();
                 parse_expression(factor);
                 return factor; // This 
             }
 
-            if (LITERAL!) {
+            if (accept(TOKEN_TYPE_LITERAL_NUMBER)
+             || accept(TOKEN_TYPE_LITERAL_STRING))
+            {
                 var factor = new Factor();
-                factor.items.push(LITERAL);
+                factor.items.push(peek());
                 return factor;
             }
 
