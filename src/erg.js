@@ -1210,10 +1210,10 @@ var erg;
         function parse_statement(scope) {
             if (parse_identifier(scope)) return true;
 
-            if (parse_if_statement(scope)) return true;
-            if (parse_asm_statement(scope)) return true;
-
-            if (parse_empty_statement(scope)) return true;
+            // TODO(jwwishart) do the following...
+            // if (parse_if_statement(scope)) return true;
+            // if (parse_asm_statement(scope)) return true;
+            // if (parse_empty_statement(scope)) return true;
 
             return false;
         }
@@ -1254,7 +1254,7 @@ var erg;
 
             if (parse_declaration(scope, identifier)) return true;
 
-            if (parse_function_call(scope)) return true;
+            // TODO(jwwishart) if (parse_function_call(scope)) return true;
 
             return false;
         }
@@ -1289,8 +1289,7 @@ var erg;
                 }
 
                 function parse_struct_fields(struct_decl) {
-                    while (parse_str
-                        uct_field(struct_decl)) {
+                    while (parse_struct_field(struct_decl)) {
                         var field_decl = struct_decl.items[struct_decl.items.length - 1];
 
                         if (peek().type !== "}") {
@@ -1320,10 +1319,10 @@ var erg;
                     variable_decl.items.push(peek());
                     eat();
 
-                    return parse_expression(scope);
+                    parse_expression(variable_decl);
+                    scope.items.push(variable_decl);
+                    return;
                 }
-
-                scope.items.push(variable_decl);
 
                 if (accept("::")) {
                     return parse_constant_expression(scope);
@@ -1336,7 +1335,7 @@ var erg;
                     }
                 }
 
-                throw new Error("FIX ME!");
+                throw new Error("Fix Me");
             }
 
         function parse_expression_statement(scope) {
@@ -1345,27 +1344,71 @@ var erg;
         }
 
         function parse_expression(scope) {
+            if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
+
+            function is_add_op() {
+                var type = peek().type;
+
+                if (type === TOKEN_TYPE_OPERATOR_PLUS ||
+                    type === TOKEN_TYPE_OPERATOR_MINUS)
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
             var expression = new Expression(scope);
 
-            while (parse_term(scope)) {
-                if (add_op == true) {
-                    continue;
-                } else {
-                    break;
+            var term = parse_term(scope);
+            // TODO(jwwishart) what if term is nothing? is it a literal (factor) ??? how to handle?
+            expression.items.push(term);
+
+            while (is_add_op()) {
+                // Deal With Operator...
+                expression.items.push(peek());
+                eat(expression.items[expression.items.length - 1]); // eat add-op
+
+                // Next Term...
+                term = parse_term(scope);
+
+                if (term != null) {
+                    expression.items.push(term);
                 }
             }
 
-            return expression;
+            scope.items.push(expression);
         }
 
         function parse_term(scope) {
-            var term = new Term(scope);
+            if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
-            while (parse_factor(scope)) {
-                if (multiplop == true) {
-                    continue;
-                } else {
-                    break;
+            function is_mult_op() {
+                var type = peek().type;
+
+                if (type === TOKEN_TYPE_OPERATOR_MULTIPLY ||
+                    type === TOKEN_TYPE_OPERATOR_DIVIDE)
+                {
+                    return true;
+                }
+                
+                return false;
+            }
+
+            var term = new Term(scope);
+            var factor = parse_factor(scope);
+            // TODO(jwwishart) what is factor is nothing? is it a literal (factor) ???? how to handle
+            term.items.push(factor);
+
+            while (is_mult_op()) {
+                term.items.push(peek());
+                eat(term.items[term.items.length - 1]);
+
+                // Next Factor
+                factor = parse_factor(scope);
+
+                if (factor != null) { 
+                    term.items.push(factor);
                 }
             }
 
@@ -1373,17 +1416,20 @@ var erg;
         }
 
         function parse_factor(scope) {
-            if (accept(TOKEN_TYPE_OPERATOR_PAREN_OPEN) {
-                var factor = new Factor();
-                parse_expression(factor);
-                return factor; // This 
-            }
+            if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
+            // if (accept(TOKEN_TYPE_OPERATOR_PAREN_OPEN)) {
+            //     var factor = new Factor();
+            //     parse_expression(factor);
+            //     return factor; // This 
+            // }
+
+            // TODO(jwwishart) parse_literal....
             if (accept(TOKEN_TYPE_LITERAL_NUMBER)
              || accept(TOKEN_TYPE_LITERAL_STRING))
             {
-                var factor = new Factor();
-                factor.items.push(peek());
+                var factor = new Literal(scope, 'string', peek().text);
+                eat(factor);
                 return factor;
             }
 
@@ -1414,7 +1460,10 @@ var erg;
 
     function Identifier(parent) {
         AstNode.call(this, parent);
+    }
 
+    function Term(parent) {
+        AstNode.call(this, parent);
     }
 
 
@@ -1659,7 +1708,15 @@ var erg;
 
     function Expression(parent) {
         AstNode.call(this, parent);
-    }
+
+        // items is a list of terms
+    };
+
+    function Term(parent) {
+        AstNode.call(this, parent);
+
+        // items is a list of factors
+    };
 
     function Literal(parent, type, value) {
         Expression.call(this, parent);
