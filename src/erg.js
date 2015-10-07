@@ -4,6 +4,16 @@
     License: See LICENSE.txt at the root of this repository
 */
 
+
+/*
+
+    Current Work Items:
+    - Need to ensure VariableDeclaration stores the semicolon ending
+      the statement on it potentially... maybe? or that the AST has 
+      it somehow regardless
+
+*/
+
 var __global = this;
 var erg;
 
@@ -240,7 +250,8 @@ var erg;
             var tokenizer = erg.tokenize(context, scanner);
             
             erg.parse(context, tokenizer);
-            //erg.type_inference(context);
+            erg.check(context);
+            // TODO(jwwishart) erg.symantic_checks(context); // i.e. identifiers not-re-used etc.
 
             result += erg.target(context) + "\n\n\n";
         });
@@ -1444,6 +1455,70 @@ var erg;
     }());
 
 
+    // Standard visitor for iterating the AST Nodees.
+    var AstVisitor = function(visit_tokens, callback) {
+        var result = {
+            visit: function(item) {
+                if (item instanceof Token && !visit_tokens) return;
+
+                callback.call(item, item);
+            }
+        };
+
+        return result;
+    };
+
+
+    // @Type Checking ---------------------------------------------------------
+    //
+
+    (function () {
+        var context = null;
+
+        function verify_symbol_can_be_defined(scope, symbol) {
+            // TODO(jwwishart) maybe iterate ALL symbols and if there are duplicates...
+            //  then display error message listing BOTH uses so that the user
+            //  can then track them down :o)
+            for (var i = 0; i < scope.identifiers.length; i++) {
+                if (scope.identifiers[i].text == symbol) {
+                    throw new Error("Identifier " + symbol + " already exists in the current scope");
+                }
+            }
+        }
+
+        function visit_variable_declaration(decl) {
+            // RULES:
+            // - Check that identifier is not used already in the current scope
+            // - If the decl has an explicit type then find the type information and
+            //   assign to the decl
+            // - Infer the type from the expression if necessary
+            // - Uninitialized variable declarations must have an explicity type
+            // - null cannot be assigned to primitive types
+            // - constants;
+            //   - cannot have explicit type
+            //   - cannot be assigne the value null or explicitly uninitialized
+            //   ? must only have literals (maybe they ought to be able to contain
+            //     compound expressions but only if everything is a primitive type???
+            // - any: can be null or any value, does not matter.
+            // ? any 'must' be specified explicitly  (?) or can it be infered?
+            verify_symbol_can_be_defined(decl.parent, decl.items[0].text);
+
+        }
+
+        erg.check = function(context_arg) {
+            context = context_arg;
+
+            var visitor = new AstVisitor(false, function(item) {
+                if (item instanceof VariableDeclaration) visit_variable_declaration(this);
+            });
+
+            context.program.accept(visitor);
+        }
+
+    }());
+
+
+
     // @Ast Nodes -------------------------------------------------------------
     //
 
@@ -1456,6 +1531,16 @@ var erg;
         this.pre_trivia = [];
         this.items = [];
         this.post_trivia = [];
+    }
+
+    AstNode.prototype.accept = function(visitor) {
+        visitor.visit.call(this, this);
+
+        for (var i = 0; i < this.items.length; i++) {
+            if (this.items[i].accept) {
+                this.items[i].accept.call(this.items[i], visitor);
+            }
+        }
     }
 
     function Identifier(parent) {
@@ -1472,12 +1557,15 @@ var erg;
 
         this.type = __any;
     }
+    VariableDeclaration.prototype.accept = function(visitor) {
+        visitor.visit.call(this, this);
+    }
 
 
     function Scope(parent) {
         AstNode.call(this, parent); // Classical Inheritance. Make this item an AstNode
         
-        this.items = [];
+        //this.items = [];
         this.deferreds = [];
 
         this.types = [];        // enum, structs (built in types if on program)
@@ -1525,6 +1613,15 @@ var erg;
             assert
         ];
     }
+    Program.prototype.accept =  function(visitor) {
+        visitor.visit.call(this, this);
+
+        for (var i = 0; i < this.files.length; i++) {
+            if (this.files[i].accept) {
+                this.files[i].accept.call(this.files[i], visitor);
+            }
+        }
+    }
 
 
     function File(program, name) {
@@ -1535,6 +1632,7 @@ var erg;
 
         this.types = [];
     }
+    File.prototype.accept = AstNode.prototype.accept;
 
 
     function AsmBlock(parent, raw_code) {
@@ -1934,7 +2032,7 @@ var erg;
 
                     // In this case we DON't want to increate the try/catch, but the contents
                     // below must if we had deferred statements
-                    process_onto_results(node.statements, result, level + increase_level ? 1 : 0);
+                    process_onto_results(node.items, result, level + increase_level ? 1 : 0);
 
                     deferred_end(node);
 
