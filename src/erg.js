@@ -67,7 +67,8 @@ var erg;
     function each(it, callback) {
         var result,
             i,
-            key;
+            key,
+            len;
 
         if (!has_value(it)) {
             return;
@@ -78,7 +79,8 @@ var erg;
         }
 
         if (is_array(it)) {
-            for (i = 0; i < it.length; i++) {
+            len = it.length; // Cache so 1) it doesn't change and 2) we don't do lookup each time (perf)
+            for (i = 0; i < len; i++) {
                 result = callback.call(it, it[i], i);
 
                 if (!has_value(result) || result === true) {
@@ -347,8 +349,9 @@ var erg;
         'TOKEN_TYPE_OPERATOR_BRACE_CLOSE',      // }
         'TOKEN_TYPE_OPERATOR_UNINITIALIZED',    // ---
 
-        'TOKEN_TYPE_OPERATOR_COLON',          // :
+        'TOKEN_TYPE_OPERATOR_COLON',            // :
         'TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN',   // :=
+        'TOKEN_TYPE_OPERATOR_DECLARATION',      // ::
 
         // Math
         'TOKEN_TYPE_OPERATOR_PLUS',             // + (includes string concat)
@@ -802,6 +805,13 @@ var erg;
                                 return token;
                             }
 
+                            if (c === ':') { // :=
+                                token.type = TOKEN_TYPE_OPERATOR_DECLARATION;
+                                token.text = '::';
+                                eat();
+                                return token;
+                            }
+
                             return token;
                         }
 
@@ -1021,7 +1031,7 @@ var erg;
                             // Parse asm block!
                             var asm = get_asm_block();
                             token.text = asm;
-                            token.lexeme.col_no = col;
+                            token.col_no = col;
                         }
 
                         return token;
@@ -1206,11 +1216,9 @@ var erg;
             while (parse_statement(scope)) {
                 var field_decl = scope.items[scope.items.length - 1];
 
-                if (peek().type !== TOKEN_TYPE_OPERATOR_BRACE_CLOSE &&
-                    peek().type !== TOKEN_TYPE_EOF) 
+                if (peek().type === TOKEN_TYPE_OPERATOR_BRACE_CLOSE ||
+                    peek().type === TOKEN_TYPE_EOF) 
                 {
-                    expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
-                } else {
                     break;
                 }
             }
@@ -1219,6 +1227,9 @@ var erg;
         }
 
         function parse_statement(scope) {
+            parse_trivia();
+
+            if (parse_keyword(scope)) return true;
             if (parse_identifier(scope)) return true;
 
             // TODO(jwwishart) do the following...
@@ -1227,6 +1238,19 @@ var erg;
             // if (parse_empty_statement(scope)) return true;
 
             return false;
+        }
+
+        function parse_keyword(scope) {
+            // TODO(jwwishart) asm
+            if (accept(TOKEN_TYPE_ASM_BLOCK)) {
+                var block = new AsmBlock(scope, peek().text);
+                scope.items.push(block);
+                eat(block);
+                return true;
+            }
+
+            // TODO(jwwishart) return (expression)
+            // TODO(jwwishart) break; continue etc.
         }
 
         function parse_trivia() {
@@ -1346,7 +1370,7 @@ var erg;
                     }
                 }
 
-                throw new Error("Fix Me");
+                expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
             }
 
         function parse_expression_statement(scope) {
@@ -1502,7 +1526,6 @@ var erg;
             // - any: can be null or any value, does not matter.
             // ? any 'must' be specified explicitly  (?) or can it be infered?
             verify_symbol_can_be_defined(decl.parent, decl.items[0].text);
-
         }
 
         erg.check = function(context_arg) {
@@ -1889,6 +1912,49 @@ var erg;
 
     (function() {
         var context = null;
+        var result = [];
+
+        // var prefix = '';
+
+        // function visit_variable_declaration(decl) {
+        // }
+
+        // function visit_program(decl) {
+        //     push('// Generated: ' + get_date());
+
+        //     push('\n"use strict";\n'); // Required for 'let' in node v4+ code output
+
+
+        //     // TODO(jwwishart) remove out into default includes.... 
+        //     push("function print(message) { console.log(message); }\n");
+        //     push("function assert(condition, fail_message) {\n" +
+        //          "    // NOTE: coersion on purpose.. if you pass null or undefined\n" +
+        //          "    // the condition should fail.\n" +
+        //          "    if (condition == false) {\n" +
+        //          "        throw new Error(\"ASSERTION FAILED: \" + fail_message);\n" +
+        //          "    }\n" +
+        //          "}\n");
+        // }
+
+        // function push(text) {
+        //     context.results += prefix + text;
+        // }
+
+        // erg.target = function(context_arg) {
+        //     context = context_arg;
+
+        //     context.DEBUG && context.log("TARGET", context.program);
+        //     context.DEBUG && context.log("TARGET", context.program.files[0]);
+
+        //     var visitor = new AstVisitor(false, function(item) {
+        //         if (item instanceof VariableDeclaration)  visit_variable_declaration(this);
+        //         if (item instanceof Program)              visit_program(this);
+        //     });
+
+        //     context.program.accept(visitor);
+
+        //     return context.results;
+        // }
 
         erg.target = function(context_arg) {
             context = context_arg;
@@ -1896,7 +1962,8 @@ var erg;
             context.DEBUG && context.log("TARGET", context.program);
             context.DEBUG && context.log("TARGET", context.program.files[0]);
 
-            return process_ast(context.program).join('\n');
+            process_ast(context.program)
+            return context.results = result.join("\n");
         };
 
 
@@ -1911,7 +1978,7 @@ var erg;
         }
 
 
-        function process_onto_results(items, result, level) {
+        function process_onto_results(items, level) {
             each(items, function(item, i) {
                 each(process_ast(item, level), function(res) {
                     result.push(res);
@@ -1938,11 +2005,14 @@ var erg;
             level = level == null ? "0" : level;
             var is_es6 = context.options.target === 'node' || context.options.target === 'es6';
             var the_var =  is_es6 ? 'let ' : 'var ';
-            var result = [];
             var prefix = determine_prefix(level);
 
             function push(text) {
                 result.push(prefix + text);
+            }
+
+            function push_inline(text) {
+                result[result.length - 1] += text;
             }
 
             function deferred_start(node, increase) {
@@ -1971,7 +2041,7 @@ var erg;
                     push("} catch (e) { ");
                     push("} finally { ");
 
-                    process_onto_results(array_copy_and_reverse(node.deferreds), result, level + 1);
+                    process_onto_results(array_copy_and_reverse(node.deferreds), level + 1);
 
                     push("}");
 
@@ -1989,7 +2059,7 @@ var erg;
 
 
             function fix_strings(node, value) {
-                if (node && node.type && (node.type.identifier === 'String' || (node.type.identifier === 'Any' && node.init && node.init[0] && node.init[0].type && node.init[0].type.identifier === 'String'))) {
+                if (node && node.type && node.type === 'string') {
                     value = "\'" + value.replace(/'/gi, "\\\'") + "\'";
                 }
 
@@ -2016,9 +2086,9 @@ var erg;
                      "}\n");
 
                 // Process Files
-                process_onto_results(node.files, result, level);
-
-                return result;
+                process_onto_results(node.files, level);
+                
+                return;
             }
 
             // File
@@ -2028,17 +2098,19 @@ var erg;
                 (function() {
                     push('// File Start: ' + node.filename);
 
-                    var increase_level = deferred_start(node);
+                    //var increase_level = deferred_start(node);
 
                     // In this case we DON't want to increate the try/catch, but the contents
                     // below must if we had deferred statements
-                    process_onto_results(node.items, result, level + increase_level ? 1 : 0);
+                    //process_onto_results(node.items, level + increase_level ? 1 : 0);
+                    process_onto_results(node.items, level);
 
-                    deferred_end(node);
+                    //deferred_end(node);
 
                     push('// File End: ' + node.filename);
                 }());
-                return result;
+
+                return;
             }
 
 
@@ -2046,11 +2118,13 @@ var erg;
             //     BEFORE we do standard Scope objects!
 
             if (node instanceof Literal) {
-                return fix_strings(node, node.value);
+                push_inline(fix_strings(node, node.value));
+                return;
             }
 
             if (node instanceof Identifier) {
-                return node.identifier;
+                push_inline(node.identifier);
+                return;
             }
 
 
@@ -2066,11 +2140,11 @@ var erg;
                     push(";(function() {");
                 }
 
-                deferred_start(node, true);
+                //deferred_start(node, true);
 
-                process_onto_results(node.statements, result, level + 1);
+                process_onto_results(node.items, level + 1);
 
-                deferred_end(node, true);
+                //deferred_end(node, true);
 
                 if (is_es6) {
                     push("}");
@@ -2088,10 +2162,12 @@ var erg;
                 (function(){
                     result.push("\n" + the_var + node.identifier + ' = function() {');
 
-                    process_onto_results(node.statements, result, level + 1);
+                    process_onto_results(node.statements, level + 1);
 
                     result.push('};\n');
                 }());
+
+                return;
             }
 
             // EnumDeclaration
@@ -2108,10 +2184,12 @@ var erg;
 
                     prefix = determine_prefix(level - 1);
 
-                    process_onto_results(node.statements, result, level + 1);
+                    process_onto_results(node.statements, level + 1);
 
                     push('}(' + node.identifier + '));\n');
                 }());
+
+                return;
             }
 
             if (node instanceof FunctionDeclaration) {
@@ -2125,14 +2203,16 @@ var erg;
                     push("\n");
                     push("function " + node.identifier + "(" + params.join(',') + ") {");
 
-                    deferred_start(node, true);
+                    //deferred_start(node, true);
 
-                    process_onto_results(node.statements, result, level + 1);
+                    process_onto_results(node.statements, level + 1);
 
-                    deferred_end(node, true);
+                    //deferred_end(node, true);
 
                     push("}\n");
                 }());
+
+                return;
             }
 
             if (node instanceof FunctionCall) {
@@ -2158,6 +2238,8 @@ var erg;
 
                     push(build += ");");
                 }());
+
+                return;
             }
 
             // WARNING(jwwishart) this is for structs!!!!!!!!!
@@ -2188,68 +2270,89 @@ var erg;
                         push('this.' + node.identifier + ' = null; ');
                     }
                 }());
+                return;
             }
 
 
             // VariableDeclaration
             if (node instanceof VariableDeclaration || node instanceof AssignmentStatement) {
                 (function() {
-                    var is_decl = node instanceof VariableDeclaration;
-                    var is_const = is_decl && node.variable_type === 'const';
+                    // Variable Decl
+                    var identifier = node.items[0].text;
+                    var is_const = node.items[1].type == TOKEN_TYPE_OPERATOR_DECLARATION;
+                    var has_explicity_type = false; // ---node.items[2] instanceof SOMETHINORATHER
 
-                    var decl_start = is_es6 ? (is_const ? 'const ' : 'let ') : (is_const ? 'var ' : 'var ');
-                    var start = is_decl ? decl_start : ''; // decl or just assignment;
+                    push('var ' + identifier + ' = ');
+                    process_ast(node.items[has_explicity_type ? 3 : 2]);
+                    push_inline(";");
 
-                    var note = is_decl && is_const ? ' // const' : '';
+                    // var decl_start = is_es6 ? (is_const ? 'const ' : 'let ') : (is_const ? 'var ' : 'var ');
+                    // var start = is_decl ? decl_start : ''; // decl or just assignment;
 
-                    var value = 'null';
+                    // var note = is_decl && is_const ? ' // const' : '';
+
+                    // var value = 'null';
                     
-                    if (is_decl && node.init.length === 0) {
-                        // Uninitialized Variable Declarations
-                        if (node.type.is_primitive) {
-                            value = node.type.default_value;
-                        }
+                    // if (is_decl && node.init.length === 0) {
+                    //     // Uninitialized Variable Declarations
+                    //     if (node.type.is_primitive) {
+                    //         value = node.type.default_value;
+                    //     }
 
-                        push(start + node.identifier + ' = ' + value + ';');
-                    } else if (node.init.length === 1 && node.init[0] instanceof Literal) {
-                        // Initialized Variables OR Assignment Expression (1 only currently);
-                        // TODO(jwwishart) support expressions!!!
-                        if (node.init[0].value === null) {
-                            value = node.init[0].type.default_value;
-                        } else {
-                            value = node.init[0].value;
-                        }
+                    //     push(start + node.identifier + ' = ' + value + ';');
+                    // } else if (node.init.length === 1 && node.init[0] instanceof Literal) {
+                    //     // Initialized Variables OR Assignment Expression (1 only currently);
+                    //     // TODO(jwwishart) support expressions!!!
+                    //     if (node.init[0].value === null) {
+                    //         value = node.init[0].type.default_value;
+                    //     } else {
+                    //         value = node.init[0].value;
+                    //     }
 
-                        if (value == null) {
-                            value = 'null';
-                        }
+                    //     if (value == null) {
+                    //         value = 'null';
+                    //     }
 
-                        // Format Strings Primitives Properly
-                        value = fix_strings(node, value);
+                    //     // Format Strings Primitives Properly
+                    //     value = fix_strings(node, value);
 
-                        push(start + node.identifier + ' = ' + value + ';' + note);
-                    } else if (node.init.length === 1 && node.init[0] instanceof TypeInstantiation) {
-                        push(start + node.identifier + ' = new ' + node.init[0].type_name + ';');
-                    } else {
-                        // TODO(jwwishart) assignment to a const not allowed!)
-                        // TODO(jwwishart) Can above issue be resolved in the parser? Not here!!!
-                        if (node.variable_type === 'const') {
-                            throw new Error("Constant declaration must be initialized:" + JSON.stringify(node));
-                        }
+                    //     push(start + node.identifier + ' = ' + value + ';' + note);
+                    // } else if (node.init.length === 1 && node.init[0] instanceof TypeInstantiation) {
+                    //     push(start + node.identifier + ' = new ' + node.init[0].type_name + ';');
+                    // } else {
+                    //     // TODO(jwwishart) assignment to a const not allowed!)
+                    //     // TODO(jwwishart) Can above issue be resolved in the parser? Not here!!!
+                    //     if (node.variable_type === 'const') {
+                    //         throw new Error("Constant declaration must be initialized:" + JSON.stringify(node));
+                    //     }
 
-                        push(the_var + node.identifier + ' = null;');
-                    }
+                    //     push(the_var + node.identifier + ' = null;');
+                    // }
                 }());
+                return;
             }
+
+            if (node instanceof Expression) {
+                process_onto_results(node.items, level);
+                return;
+            }
+
+            if (node instanceof Term) {
+                process_onto_results(node.items, level);
+                return;
+            }
+
+            //if (node instanceof Factor) {
+            //    process_onto_results(node.items, result);
+            //}
 
             // Asm Block
             if (node instanceof AsmBlock)  {
                 push("\n\n// RAW ASM OUTPUT START (javascript) -------------------------");
                 push(node.raw_code);
                 push("\n// RAW ASM OUTPUT END (javascript) --------------------------\n\n");
+                return;
             }
-
-            return result;
         }
 
     }());
