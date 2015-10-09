@@ -251,7 +251,12 @@ var erg;
             var scanner = erg.scan(context);
             var tokenizer = erg.tokenize(context, scanner);
             
-            erg.parse(context, tokenizer);
+            var success = erg.parse(context, tokenizer);
+
+            if (success === false) {
+                throw new Error("ERROR: Compilation failed!");
+            }
+
             erg.check(context);
             // TODO(jwwishart) erg.symantic_checks(context); // i.e. identifiers not-re-used etc.
 
@@ -419,6 +424,42 @@ var erg;
         var c;
         var multilineCommentDepth = 0;
 
+        var history = (function() {
+            var token_history = []; // start with top at the start!
+            var i = -1;
+
+            function push(token) {
+                token_history.unshift(token);
+                trim_history();
+            }
+
+            function back(number_of_tokens) {
+                i += number_of_tokens;
+            }
+
+            function trim_history() {
+                // Trim the end of the stack if you like!
+                if (token_history.length > 20) {
+                    token_history.pop();
+                }
+            }
+
+            function eat() {
+                if (i === -1) {
+                    return false;
+                }
+
+                var result = token_history[i];
+                i--;
+                return results;
+            }
+
+            return {
+                push: push,
+                back: back,
+                eat: eat
+            };
+        }());
 
         // Char Traversal
         //
@@ -444,6 +485,10 @@ var erg;
             eat();
             c = peek();
             return result;
+        }
+
+        function fix_token_type(token) {
+            token.type_name = get_global_constant_name('TOKEN_TYPES', token.type);
         }
 
 
@@ -669,11 +714,47 @@ var erg;
             return result;
         }
 
+        var peek_info = {
+            is_from_history: false,
+            is_new: true
+        }
+
         return {
             peek: function() {
+                peek_info.is_new = true; // Assume true till _inner_peek tells us otherwise!
+
+                var result = null;
+
+                if (token !== null && peek_info.is_from_history === true) {
+                    return token;
+                }
+
+                // Hit history if necessary
+                if (token === null || peek_info.is_from_history === true) {
+                    peek_info.is_from_history = false;
+                    result = history.eat();
+
+                    if (result !== false) {
+                        peek_info.is_from_history = true;
+                        return token = result;
+                    }
+                }
+
+                result = this._inner_peek();
+
+                if (result.is_new === true) {
+                    history.push(result);
+                }
+
+                return result;
+            },
+
+            _inner_peek: function() {
                 var colNo = 1;
 
                 if (token !== null) {
+                    peek_info.is_new = false;
+
                     return token;
                 }
 
@@ -738,6 +819,8 @@ var erg;
                                 c = peek();
 
                                 token.type = TOKEN_TYPE_TRIVIA_COMMENT_MULTIPLE;
+                                fix_token_type(token);
+
                                 token.text = get_multiline_comments();
 
                                 return token;
@@ -800,6 +883,8 @@ var erg;
 
                             if (c === '=') { // :=
                                 token.type = TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN;
+                                fix_token_type(token);
+
                                 token.text = ':=';
                                 eat();
                                 return token;
@@ -807,6 +892,7 @@ var erg;
 
                             if (c === ':') { // :=
                                 token.type = TOKEN_TYPE_OPERATOR_DECLARATION;
+                                fix_token_type(token);
                                 token.text = '::';
                                 eat();
                                 return token;
@@ -823,6 +909,7 @@ var erg;
 
                             if (c === '+') { // ++
                                 token.type = TOKEN_TYPE_OPERATOR_INCREMENT;
+                                fix_token_type(token);
                                 token.text += '+';
                                 eat();
                                 return token;
@@ -830,6 +917,7 @@ var erg;
                             
                             if (c === '=') { // +=
                                 token.type = TOKEN_TYPE_OPERATOR_PLUS_EQUALS;
+                                fix_token_type(token);
                                 token.text += '=';
                                 eat();
                                 return token;
@@ -846,12 +934,14 @@ var erg;
 
                             if (c === '-') { // --
                                 token.type = TOKEN_TYPE_OPERATOR_INCREMENT;
+                                fix_token_type(token);
                                 token.text = '--';
                                 eat();
 
                                 if (c === '-') { // ---
                                     eat();
                                     token.type = TOKEN_TYPE_OPERATOR_UNINITIALIZED;
+                                    fix_token_type(token);
                                     token.text = '---'
                                     eat();
                                 }
@@ -861,6 +951,7 @@ var erg;
 
                             if (c === '=') { // -=
                                 token.type = TOKEN_TYPE_OPERATOR_MINUS_EQUALS;
+                                fix_token_type(token);
                                 token.text = '-=';
                                 eat();
                                 return token;
@@ -877,6 +968,7 @@ var erg;
                             if (c === '=') { // *=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_MULTIPLY_EQUALS;
+                                fix_token_type(token);
                                 token.text = '*=';
                             }
 
@@ -891,6 +983,7 @@ var erg;
                             if (c === '=') { // /=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_DIVIDE_EQUALS;
+                                fix_token_type(token);
                                 token.text = '/=';
                             }
 
@@ -905,6 +998,7 @@ var erg;
                             if (c === '=') { // %=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_REMAINDER_EQUALS;
+                                fix_token_type(token);
                                 token.text = '%=';
                             }
 
@@ -919,6 +1013,7 @@ var erg;
                             if (c === '=') { // ==
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_EQUALS;
+                                fix_token_type(token);
                                 token.text = '==';
                             }
 
@@ -933,6 +1028,7 @@ var erg;
                             if (c === '=') { // !=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_NOT_EQUALS;
+                                fix_token_type(token);
                                 token.text = '!=';
                             }
 
@@ -947,6 +1043,7 @@ var erg;
                             if (c === '=') { // <=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_LESS_THAN_EQUAL_TO;
+                                fix_token_type(token);
                                 token.text = '<=';
                             }
 
@@ -961,6 +1058,7 @@ var erg;
                             if (c === '=') { // >=
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_GREATER_THAN_EQUAL_TO;
+                                fix_token_type(token);
                                 token.text = '>=';
                             }
 
@@ -975,6 +1073,7 @@ var erg;
                             if (c === '&') {
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_AND;
+                                fix_token_type(token);
                                 token.text += '&';
                             }
 
@@ -989,6 +1088,7 @@ var erg;
                             if (c === '|') {
                                 eat();
                                 token.type = TOKEN_TYPE_OPERATOR_OR;
+                                fix_token_type(token);
                                 token.text += '|';
                             }
 
@@ -1015,15 +1115,15 @@ var erg;
                         //
 
 
-                        if (token.text === "null")   create_token(TOKEN_TYPE_KEYWORD_NULL,      'null');
-                        if (token.text === "void")   create_token(TOKEN_TYPE_KEYWORD_VOID,      'void');
-
-                        if (token.text === "struct") create_token(TOKEN_TYPE_KEYWORD_STRUCT,    'struct');
-                        if (token.text === "enum")   create_token(TOKEN_TYPE_KEYWORD_ENUM,      'enum');
-                        if (token.text === "new")    create_token(TOKEN_TYPE_KEYWORD_NEW,       'new');
-
-                        if (token.text === "true")   create_token(TOKEN_TYPE_KEYWORD_TRUE,      'true');
-                        if (token.text === "false")  create_token(TOKEN_TYPE_KEYWORD_FALSE,     'false');
+                        if (token.text === "null")   token.type = TOKEN_TYPE_KEYWORD_NULL;
+                        if (token.text === "void")   token.type = TOKEN_TYPE_KEYWORD_VOID;
+ 
+                        if (token.text === "struct") token.type = TOKEN_TYPE_KEYWORD_STRUCT;
+                        if (token.text === "enum")   token.type = TOKEN_TYPE_KEYWORD_ENUM;
+                        if (token.text === "new")    token.type = TOKEN_TYPE_KEYWORD_NEW;
+ 
+                        if (token.text === "true")   token.type = TOKEN_TYPE_KEYWORD_TRUE;
+                        if (token.text === "false")  token.type = TOKEN_TYPE_KEYWORD_FALSE;
 
                         if (token.text === "asm") {
                             token = create_token(TOKEN_TYPE_ASM_BLOCK, '')
@@ -1034,6 +1134,7 @@ var erg;
                             token.col_no = col;
                         }
 
+                        fix_token_type(token);
                         return token;
                     }
 
@@ -1058,6 +1159,10 @@ var erg;
             eat: function() {
                 context.DEBUG && context.log("TOKENIZERE", JSON.stringify(token));
                 token = null;
+            },
+
+            back: function(number_of_tokens) {
+                history.back(number_of_tokens);
             }
         };
     };
@@ -1114,6 +1219,11 @@ var erg;
             return tokenizer.peek();
         }
 
+        function back(number_of_tokens) {
+            number_of_tokens = number_of_tokens || 1;
+            tokenizer.back(number_of_tokens);
+        }
+
         function eat_only() {
             tokenizer.eat();
         }
@@ -1163,7 +1273,7 @@ var erg;
                     col_no:   _current_compiler_context.current_code.split("\n")[_current_compiler_context.current_code.split("\n").length-1].length + 1,
                 };
 
-                ERROR(location_info, "Unexpected end of file. Was expecting token of type: " + get_global_constant_name('TOKEN_TYPES', token_type));
+                TOKEN_ERROR(location_info, "Unexpected end of file. Was expecting token of type: " + get_global_constant_name('TOKEN_TYPES', token_type));
             }
 
             if (is_array(token_type)) {
@@ -1184,10 +1294,10 @@ var erg;
                     token_labels.push(get_global_constant_name('TOKEN_TYPES', item));
                 });
 
-                ERROR(peek(), "Unexpected token: Expecting one of " + token_labels.join(",") + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
+                TOKEN_ERROR(peek(), "Unexpected token: Expecting one of " + token_labels.join(",") + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
             } else {
                 if (peek().type !== token_type) {
-                    ERROR(peek(), "Unexpected token: Expecting " + get_global_constant_name('TOKEN_TYPES', token_type) + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
+                    TOKEN_ERROR(peek(), "Unexpected token: Expecting " + get_global_constant_name('TOKEN_TYPES', token_type) + " but got a " + get_global_constant_name('TOKEN_TYPES', peek().type));
                 }
             }
 
@@ -1219,19 +1329,19 @@ var erg;
                 if (peek().type === TOKEN_TYPE_OPERATOR_BRACE_CLOSE ||
                     peek().type === TOKEN_TYPE_EOF) 
                 {
-                    break;
+                    return true;
                 }
             }
 
-            return true;
+            return false;
         }
 
         function parse_statement(scope) {
-            parse_trivia();
+            if (parse_trivia()) return true;
 
             if (parse_keyword(scope)) return true;
-            if (parse_identifier(scope)) return true;
-
+            if (parse_declaration(scope)) return true;
+            
             // TODO(jwwishart) do the following...
             // if (parse_if_statement(scope)) return true;
             // if (parse_asm_statement(scope)) return true;
@@ -1251,14 +1361,27 @@ var erg;
 
             // TODO(jwwishart) return (expression)
             // TODO(jwwishart) break; continue etc.
+
+            return false;
         }
 
+// TODO(jwwishart) I think I might need to just make the tokenizer create
+// one big ginormouse list of tokens upfront.... OR store everything in 
+// history so that I can backup indefinitely... as if there are lots of 
+// trivia then we might not get back to the start with say identifier
+// it might have passed an indefinite amount of trivia and we need to 
+// get back to where it was... we likely therefore need to either 1)
+// 1) count the trivia tokens and have indefinite history or 
+// 2) ignore trivia
+// 3) parse all tokens for file upfont and be able to get the index at the start
+//    of the parse_trivia of the location of the current token so we can say to
+//    back to EXACTLY THIS TOKEN. I like this best! this option!
         function parse_trivia() {
-            while (accept(TOKEN_TYPE_TRIVIA_NEWLINE)
-                || accept(TOKEN_TYPE_TRIVIA_WHITESPACE)
-                || accept(TOKEN_TYPE_TRIVIA_COMMENT_LINE)
-                || accept(TOKEN_TYPE_TRIVIA_COMMENT_MULTIPLE)
-                || accept(TOKEN_TYPE_EOF)) 
+            while (accept([TOKEN_TYPE_TRIVIA_NEWLINE,
+                         , TOKEN_TYPE_TRIVIA_WHITESPACE,
+                         , TOKEN_TYPE_TRIVIA_COMMENT_LINE,
+                         , TOKEN_TYPE_TRIVIA_COMMENT_MULTIPLE,
+                         , TOKEN_TYPE_EOF])) 
             {
                 gathered_trivia.push(peek());
                 eat_only(); // Don't do a normal eat as it calls parse_trivia :o)
@@ -1268,13 +1391,10 @@ var erg;
                 }
             }
 
-
             if (peek().type === TOKEN_TYPE_EOF) {
-                return true; // we are done processing statements
+                return true; // we are done processing everything :o)
             }
 
-            // TODO(jwwishart) parse_comments(scope);
-            // TODO(jwwishart) parse_multiline_comments;
             return false; // we have more to parse... let other statements be processed
         }
 
@@ -1282,23 +1402,25 @@ var erg;
             if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
             if (accept(TOKEN_TYPE_IDENTIFIER)) {
-                var identifier = new Identifier(null);
+                var identifier = new Identifier(scope);
                 identifier.text = peek().text;
                 eat(identifier);
+
+                scope.items.push(identifier);
+
+                return true;
             }
 
-            if (parse_declaration(scope, identifier)) return true;
-
-            // TODO(jwwishart) if (parse_function_call(scope)) return true;
+            back();
 
             return false;
         }
 
-        function parse_declaration(scope, identifier) {
+        function parse_declaration(scope) {
             // TODO(jwwishart) parse_struct(scope, identifier);        // ident :: struct {
             // TODO(jwwishart) parse_enum(scope, identifier);          // ident :: enum {
             // TODO(jwwishart) parse_function(scope, identifier);      // ident :: (
-            if (parse_variable(scope, identifier)) return true;        // ident :: expression
+            if (parse_variable(scope)) return true;                    // ident :: expression
 
             return false;
         }
@@ -1346,8 +1468,13 @@ var erg;
                         }
                     }
 
-            function parse_variable(scope, identifier) {
+            function parse_variable(scope) {
                 var variable_decl = new VariableDeclaration(scope);
+
+                if (accept(TOKEN_TYPE_IDENTIFIER)) {
+                    parse_identifier(variable_decl);
+                }
+
                 variable_decl.items.push(identifier);
 
                 if (accept(TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN)) {
@@ -1356,21 +1483,35 @@ var erg;
 
                     parse_expression(variable_decl);
                     scope.items.push(variable_decl);
-                    return;
+                    return true;
                 }
 
-                if (accept("::")) {
+                if (accept(TOKEN_TYPE_OPERATOR_DECLARATION)) {
                     return parse_constant_expression(scope);
                 }
 
-                if (accept(":")) {
-                    parse_type(scope);
+                if (accept(TOKEN_TYPE_OPERATOR_COLON)) {
+                    variable_decl.items.push(peek());
+
+                    expect(TOKEN_TYPE_IDENTIFIER);
+
+                    if (parse_identifier(variable_decl)) return true;
+
                     if (accept("=")) {
                         parse_expression(scope);
                     }
+
+                    return true;
                 }
 
                 expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
+
+                return false;
+            }
+
+            function parse_type(scope) {
+
+
             }
 
         function parse_expression_statement(scope) {
@@ -1461,9 +1602,21 @@ var erg;
 
             // TODO(jwwishart) parse_literal....
             if (accept(TOKEN_TYPE_LITERAL_NUMBER)
+             || accept(TOKEN_TYPE_KEYWORD_FALSE)
+             || accept(TOKEN_TYPE_KEYWORD_TRUE)
              || accept(TOKEN_TYPE_LITERAL_STRING))
             {
-                var factor = new Literal(scope, 'string', peek().text);
+                 // TODO(jwwishart) do floats... Assuming whole numbers currently
+                var type = 'void';
+
+                switch(peek().type) {
+                    case TOKEN_TYPE_LITERAL_NUMBER: type = 'int';    break;
+                    case TOKEN_TYPE_LITERAL_STRING: type = 'string'; break;
+                    case TOKEN_TYPE_KEYWORD_FALSE:
+                    case TOKEN_TYPE_KEYWORD_TRUE:   type = 'bool';   break;
+                }
+
+                var factor = new Literal(scope, type, peek().text);
                 eat(factor);
                 return factor;
             }
@@ -1957,6 +2110,8 @@ var erg;
         // }
 
         erg.target = function(context_arg) {
+            result = [];
+
             context = context_arg;
 
             context.DEBUG && context.log("TARGET", context.program);
