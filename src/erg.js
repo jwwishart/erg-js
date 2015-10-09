@@ -1377,6 +1377,9 @@ var erg;
 //    of the parse_trivia of the location of the current token so we can say to
 //    back to EXACTLY THIS TOKEN. I like this best! this option!
         function parse_trivia() {
+            // TODO(jwwishart) probably need to put EofAstNode with final trivia onto the AST!
+            // TODO(jwwishart) AUDIT: ENSURE EVERYTHING DOES THIS AT THE START AND WHERE APPROPRIATE
+
             while (accept([TOKEN_TYPE_TRIVIA_NEWLINE,
                          , TOKEN_TYPE_TRIVIA_WHITESPACE,
                          , TOKEN_TYPE_TRIVIA_COMMENT_LINE,
