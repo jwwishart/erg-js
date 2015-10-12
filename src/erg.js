@@ -423,43 +423,8 @@ var erg;
         var token = null;
         var c;
         var multilineCommentDepth = 0;
+        var history = [];
 
-        var history = (function() {
-            var token_history = []; // start with top at the start!
-            var i = -1;
-
-            function push(token) {
-                token_history.unshift(token);
-                trim_history();
-            }
-
-            function back(number_of_tokens) {
-                i += number_of_tokens;
-            }
-
-            function trim_history() {
-                // Trim the end of the stack if you like!
-                if (token_history.length > 20) {
-                    token_history.pop();
-                }
-            }
-
-            function eat() {
-                if (i === -1) {
-                    return false;
-                }
-
-                var result = token_history[i];
-                i--;
-                return results;
-            }
-
-            return {
-                push: push,
-                back: back,
-                eat: eat
-            };
-        }());
 
         // Char Traversal
         //
@@ -714,47 +679,33 @@ var erg;
             return result;
         }
 
-        var peek_info = {
-            is_from_history: false,
-            is_new: true
-        }
+        var processed = false;
+        var current_index = -1;
 
         return {
             peek: function() {
-                peek_info.is_new = true; // Assume true till _inner_peek tells us otherwise!
+                token = this._inner_peek();
 
-                var result = null;
-
-                if (token !== null && peek_info.is_from_history === true) {
-                    return token;
-                }
-
-                // Hit history if necessary
-                if (token === null || peek_info.is_from_history === true) {
-                    peek_info.is_from_history = false;
-                    result = history.eat();
-
-                    if (result !== false) {
-                        peek_info.is_from_history = true;
-                        return token = result;
+                if (processed === false) {
+                    while ((token = this._inner_peek()) != null && token.type !== TOKEN_TYPE_EOF) {
+                        history.push(token);
+                        token = null;
                     }
+
+                    history.push(token);
+                    token = null;
+
+                    processed = true;
+                    current_index++;
                 }
 
-                result = this._inner_peek();
-
-                if (result.is_new === true) {
-                    history.push(result);
-                }
-
-                return result;
+                return history[current_index];
             },
 
             _inner_peek: function() {
                 var colNo = 1;
 
                 if (token !== null) {
-                    peek_info.is_new = false;
-
                     return token;
                 }
 
@@ -1158,11 +1109,22 @@ var erg;
 
             eat: function() {
                 context.DEBUG && context.log("TOKENIZERE", JSON.stringify(token));
-                token = null;
+
+                if (current_index < history.length) {
+                    current_index++;
+                }
             },
 
             back: function(number_of_tokens) {
-                history.back(number_of_tokens);
+                current_index -= number_of_tokens;
+            },
+
+            get_current_location: function() {
+                return current_index;
+            },
+
+            set_current_location: function(location) {
+                current_index = location;
             }
         };
     };
@@ -1177,10 +1139,6 @@ var erg;
 
         var gathered_trivia = [];
 
-        // TODO(jwwishart) finish this off!)
-        var past_tokens = [];
-
-
         /// Parses tokens and constructs an ast on the program
         /// ast node that is passed in.
         ///
@@ -1188,8 +1146,6 @@ var erg;
         ///     files   : a map of filename > code
         ///     options : a map of options for the complier 
         erg.parse = function(context_arg, tokenizer_arg) {
-            past_tokens = []; // Queue for non-whitespace tokens only. Handled in eat();
-
             context = context_arg;
             tokenizer = tokenizer_arg;
 
@@ -1217,6 +1173,14 @@ var erg;
 
         function peek() {
             return tokenizer.peek();
+        }
+
+        function get_current_location() {
+            return tokenizer.get_current_location();
+        }
+
+        function set_current_location(location) {
+            tokenizer.set_current_location(location);
         }
 
         function back(number_of_tokens) {
@@ -1319,10 +1283,21 @@ var erg;
         //
 
         function parse_file(scope) {
-            return parse_statement_block(scope);
+            if (parse_trivia()) return true;
+
+            if (parse_statement_block(scope)) return true;
+
+            // TODO(jwwishart) check this is correct ending for parse_file();
+            parse_trivia(); 
+            return true;
         }
 
+        // TODO(jwwishart) this ought maybe be parse_block or parse_scope?
         function parse_statement_block(scope) {
+            var loc = get_current_location();
+
+            if (parse_trivia()) return true;
+
             while (parse_statement(scope)) {
                 var field_decl = scope.items[scope.items.length - 1];
 
@@ -1333,10 +1308,13 @@ var erg;
                 }
             }
 
+            set_current_location(loc);
             return false;
         }
 
         function parse_statement(scope) {
+            var loc = get_current_location();
+
             if (parse_trivia()) return true;
 
             if (parse_keyword(scope)) return true;
@@ -1347,10 +1325,13 @@ var erg;
             // if (parse_asm_statement(scope)) return true;
             // if (parse_empty_statement(scope)) return true;
 
+            set_current_location(loc);
             return false;
         }
 
         function parse_keyword(scope) {
+            var loc = get_current_location();
+
             // TODO(jwwishart) asm
             if (accept(TOKEN_TYPE_ASM_BLOCK)) {
                 var block = new AsmBlock(scope, peek().text);
@@ -1361,7 +1342,7 @@ var erg;
 
             // TODO(jwwishart) return (expression)
             // TODO(jwwishart) break; continue etc.
-
+            set_current_location(loc);
             return false;
         }
 
@@ -1402,6 +1383,8 @@ var erg;
         }
 
         function parse_identifier(scope) {
+            var loc = get_current_location();
+
             if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
             if (accept(TOKEN_TYPE_IDENTIFIER)) {
@@ -1414,17 +1397,19 @@ var erg;
                 return true;
             }
 
-            back();
-
+            set_current_location(loc);
             return false;
         }
 
         function parse_declaration(scope) {
+            var loc = get_current_location();
+
             // TODO(jwwishart) parse_struct(scope, identifier);        // ident :: struct {
             // TODO(jwwishart) parse_enum(scope, identifier);          // ident :: enum {
             // TODO(jwwishart) parse_function(scope, identifier);      // ident :: (
             if (parse_variable(scope)) return true;                    // ident :: expression
-
+            
+            set_current_location(loc);
             return false;
         }
 
@@ -1472,57 +1457,86 @@ var erg;
                     }
 
             function parse_variable(scope) {
+                var loc = get_current_location();
+                var token = null;
+
                 var variable_decl = new VariableDeclaration(scope);
 
-                if (accept(TOKEN_TYPE_IDENTIFIER)) {
-                    parse_identifier(variable_decl);
-                }
+                if (parse_identifier(variable_decl)) {
+                    if (accept(TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN)) {
+                        token = peek();
+                        variable_decl.items.push(token);
+                        eat(token);
 
-                variable_decl.items.push(identifier);
+                        if (!parse_expression(variable_decl)) {
+                            set_current_location(loc)
+                            return false;
+                        }
 
-                if (accept(TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN)) {
-                    variable_decl.items.push(peek());
-                    eat();
+                        expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
+                        eat(); // ;
 
-                    parse_expression(variable_decl);
-                    scope.items.push(variable_decl);
-                    return true;
-                }
+                        scope.items.push(variable_decl);
+                    }
+                                        
+                    if (accept(TOKEN_TYPE_OPERATOR_DECLARATION)) {
+                        if (!parse_constant_expression(scope)) {
+                            set_current_location(loc);
+                            return false; // failed to pass expression constant!
+                        }
 
-                if (accept(TOKEN_TYPE_OPERATOR_DECLARATION)) {
-                    return parse_constant_expression(scope);
-                }
+                        expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
+                        eat(); // ;
 
-                if (accept(TOKEN_TYPE_OPERATOR_COLON)) {
-                    variable_decl.items.push(peek());
-
-                    expect(TOKEN_TYPE_IDENTIFIER);
-
-                    if (parse_identifier(variable_decl)) return true;
-
-                    if (accept("=")) {
-                        parse_expression(scope);
+                        scope.items.push(variable_decl);
                     }
 
-                    return true;
-                }
+                    if (accept(TOKEN_TYPE_OPERATOR_COLON)) {
+                        variable_decl.items.push(peek());
 
-                expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
+                        if (parse_identifier(variable_decl)) {
+                            if (accept(TOKEN_TYPE_OPERATOR_ASSIGNMENT)) {
+                                variable_decl.items.push(peek());
+                                eat();
+
+                                if (!parse_expression(scope)) {
+                                    set_current_location(loc);
+                                    return false;
+                                }
+                            }
+
+                            return true;
+                        }
+                    }
+                }
 
                 return false;
             }
+
+            // function parse_operator(scope, expected_token_type) {
+            //     parse_trivia(); // TODO(jwwishart) ?
+
+            //     if (expect(expected_token_type)) {
+            //         eat();
+            //         return true;
+            //     }
+
+            //     return false;
+            // }
 
             function parse_type(scope) {
 
 
             }
 
-        function parse_expression_statement(scope) {
-            var statement = new ExpressionStatement(scope);
-            parse_expression(statement);
-        }
+        // function parse_expression_statement(scope) {
+        //     var statement = new ExpressionStatement(scope);
+        //     parse_expression(statement);
+        // }
 
         function parse_expression(scope) {
+            var loc = get_current_location();
+
             if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
             function is_add_op() {
@@ -1539,27 +1553,33 @@ var erg;
 
             var expression = new Expression(scope);
 
-            var term = parse_term(scope);
-            // TODO(jwwishart) what if term is nothing? is it a literal (factor) ??? how to handle?
-            expression.items.push(term);
+            if (parse_term(expression)) {
+                while (is_add_op()) {
+                    eat(expression.items[expression.items.length - 1]); // eat add-op
 
-            while (is_add_op()) {
-                // Deal With Operator...
-                expression.items.push(peek());
-                eat(expression.items[expression.items.length - 1]); // eat add-op
-
-                // Next Term...
-                term = parse_term(scope);
-
-                if (term != null) {
-                    expression.items.push(term);
+                    // Next Term...
+                    if (!parse_term(expression)) break;
                 }
+
+                scope.items.push(expression);
+
+                return true;
             }
 
-            scope.items.push(expression);
+            set_current_location(loc);
+            return false;
         }
 
+/// UP TO HERE: make this inline with parse_expression and do factor too
+/// UP TO HERE: make this inline with parse_expression and do factor too
+/// UP TO HERE: make this inline with parse_expression and do factor too
+/// UP TO HERE: make this inline with parse_expression and do factor too
+/// UP TO HERE: make this inline with parse_expression and do factor too
+/// UP TO HERE: make this inline with parse_expression and do factor too
+
         function parse_term(scope) {
+            var loc = get_current_location();
+
             if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
             function is_mult_op() {
@@ -1575,7 +1595,9 @@ var erg;
             }
 
             var term = new Term(scope);
+
             var factor = parse_factor(scope);
+
             // TODO(jwwishart) what is factor is nothing? is it a literal (factor) ???? how to handle
             term.items.push(factor);
 
@@ -1591,7 +1613,8 @@ var erg;
                 }
             }
 
-            return term;
+            set_current_location(loc);
+            return false;
         }
 
         function parse_factor(scope) {
@@ -1630,6 +1653,7 @@ var erg;
             // TODO(jwwishart) assignment_expression
             // TODO(jwwishart) unary_expression
             // TODO(jwwishart) binary-expressoin
+            return false;
         }
 
     }());
