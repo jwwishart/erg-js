@@ -1164,7 +1164,11 @@ var erg;
 
             // TODO(jwwishart) need to handle this and make sure that everything...
             //  actually returns correct true/false values.
-            return parse_file(scope);
+            var result = parse_file(scope);
+
+            if (result === false) {
+                TOKEN_ERROR(peek(), "Unexpected token");
+            }
         };
 
 
@@ -1289,16 +1293,18 @@ var erg;
 
             // TODO(jwwishart) check this is correct ending for parse_file();
             parse_trivia(); 
-            return true;
+            return false;
         }
 
         // TODO(jwwishart) this ought maybe be parse_block or parse_scope?
         function parse_statement_block(scope) {
-            var loc = get_current_location();
+            var loc = get_current_location(); 
 
             if (parse_trivia()) return true;
 
             while (parse_statement(scope)) {
+                loc = get_current_location(); // just successfully parsed as statement so update location
+
                 var field_decl = scope.items[scope.items.length - 1];
 
                 if (peek().type === TOKEN_TYPE_OPERATOR_BRACE_CLOSE ||
@@ -1466,51 +1472,93 @@ var erg;
                     if (accept(TOKEN_TYPE_OPERATOR_DECLARE_ASSIGN)) {
                         token = peek();
                         variable_decl.items.push(token);
-                        eat(token);
+                        eat(token); // :=
 
                         if (!parse_expression(variable_decl)) {
                             set_current_location(loc)
                             return false;
                         }
 
-                        expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
-                        eat(); // ;
+                        parse_semicolon(variable_decl, true);
 
                         scope.items.push(variable_decl);
+                        return true;
                     }
                                         
                     if (accept(TOKEN_TYPE_OPERATOR_DECLARATION)) {
-                        if (!parse_constant_expression(scope)) {
+                        token = peek();
+                        variable_decl.items.push(token);
+                        eat(token); // ::
+
+                        if (!parse_constant_expression(variable_decl)) {
                             set_current_location(loc);
                             return false; // failed to pass expression constant!
                         }
 
-                        expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
-                        eat(); // ;
+                        parse_semicolon(variable_decl, true);
 
                         scope.items.push(variable_decl);
+                        return true;
                     }
 
                     if (accept(TOKEN_TYPE_OPERATOR_COLON)) {
-                        variable_decl.items.push(peek());
+                        token = peek();
+                        variable_decl.items.push(token);
+                        eat(token)
 
                         if (parse_identifier(variable_decl)) {
                             if (accept(TOKEN_TYPE_OPERATOR_ASSIGNMENT)) {
-                                variable_decl.items.push(peek());
-                                eat();
+                                token = peek();
+                                variable_decl.items.push(token);
+                                eat(token); // =
 
-                                if (!parse_expression(scope)) {
-                                    set_current_location(loc);
-                                    return false;
+                                if (parse_expression(variable_decl)) {
+                                    parse_semicolon(variable_decl, true);
+
+                                    scope.items.push(variable_decl);
+                                    return true;
                                 }
+
+                                set_current_location(loc);
+                                return false;
                             }
+
+                            parse_semicolon(variable_decl, true);
+                            scope.items.push(variable_decl);
 
                             return true;
                         }
                     }
                 }
 
+
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE
+// TODO(jwwishart) UP TO HERE (do this context failing stuff ?... per statement call maybe????
+                // TODO(jwwishart) THIS WON'T WORK: Maybe put these all onto the context...
+                // there could be several situations that could arise... the one
+                // where the longest success (token closest to the end of the file)
+                // ought to be the point we want to fail on me thinks! :o)
+
+                // var result = new Boolean(false);
+                // result._token = peek();
+                // set_current_location(loc);
+
+                // return result;
+
+                set_current_location(loc)
                 return false;
+            }
+
+            function parse_semicolon(scope, is_expected) {
+                is_expected && expect(TOKEN_TYPE_OPERATOR_SEMICOLON);
+
+                var token = peek();
+                scope.items.push(token);
+                eat(token); // ;
             }
 
             // function parse_operator(scope, expected_token_type) {
@@ -1570,13 +1618,6 @@ var erg;
             return false;
         }
 
-/// UP TO HERE: make this inline with parse_expression and do factor too
-/// UP TO HERE: make this inline with parse_expression and do factor too
-/// UP TO HERE: make this inline with parse_expression and do factor too
-/// UP TO HERE: make this inline with parse_expression and do factor too
-/// UP TO HERE: make this inline with parse_expression and do factor too
-/// UP TO HERE: make this inline with parse_expression and do factor too
-
         function parse_term(scope) {
             var loc = get_current_location();
 
@@ -1596,21 +1637,17 @@ var erg;
 
             var term = new Term(scope);
 
-            var factor = parse_factor(scope);
+            if (parse_factor(term)) {
+                while (is_mult_op()) {
+                    eat(term.items[term.item.length - 1]); // eat mult-op
 
-            // TODO(jwwishart) what is factor is nothing? is it a literal (factor) ???? how to handle
-            term.items.push(factor);
-
-            while (is_mult_op()) {
-                term.items.push(peek());
-                eat(term.items[term.items.length - 1]);
-
-                // Next Factor
-                factor = parse_factor(scope);
-
-                if (factor != null) { 
-                    term.items.push(factor);
+                    // Next Factor
+                    if (!parse_factor(term)) break;
                 }
+
+                scope.items.push(term);
+
+                return true;
             }
 
             set_current_location(loc);
@@ -1626,26 +1663,17 @@ var erg;
             //     return factor; // This 
             // }
 
-            // TODO(jwwishart) parse_literal....
-            if (accept(TOKEN_TYPE_LITERAL_NUMBER)
-             || accept(TOKEN_TYPE_KEYWORD_FALSE)
-             || accept(TOKEN_TYPE_KEYWORD_TRUE)
-             || accept(TOKEN_TYPE_LITERAL_STRING))
-            {
-                 // TODO(jwwishart) do floats... Assuming whole numbers currently
-                var type = 'void';
+            // Literals
+            //
 
-                switch(peek().type) {
-                    case TOKEN_TYPE_LITERAL_NUMBER: type = 'int';    break;
-                    case TOKEN_TYPE_LITERAL_STRING: type = 'string'; break;
-                    case TOKEN_TYPE_KEYWORD_FALSE:
-                    case TOKEN_TYPE_KEYWORD_TRUE:   type = 'bool';   break;
-                }
+            if (accept(TOKEN_TYPE_LITERAL_NUMBER)) return create_factor(scope, "int", peek().text);
 
-                var factor = new Literal(scope, type, peek().text);
-                eat(factor);
-                return factor;
-            }
+            if (accept(TOKEN_TYPE_KEYWORD_FALSE))  return create_factor(scope, "bool", "false");
+            if (accept(TOKEN_TYPE_KEYWORD_TRUE))   return create_factor(scope, "bool", "true");
+
+            if (accept(TOKEN_TYPE_LITERAL_STRING)) return create_factor(scope, "string", peek().text);
+
+            if (accept(TOKEN_TYPE_KEYWORD_NULL))   return create_factor(scope, "null", "null");
 
             // TODO(jwwishart) function_call
             // TODO(jwwishart) identifier
@@ -1653,7 +1681,18 @@ var erg;
             // TODO(jwwishart) assignment_expression
             // TODO(jwwishart) unary_expression
             // TODO(jwwishart) binary-expressoin
+            // TODO(jwwishart) parenthesis expression
+
             return false;
+        }
+
+        function create_factor(scope, type, text) {
+            var factor = new Literal(scope, type, text);
+            eat(factor);
+
+            scope.items.push(factor);
+
+            return true;
         }
 
     }());
@@ -2024,13 +2063,6 @@ var erg;
 
         this.type = type || __void;
         this.value = value;
-    }
-
-    function Identifier(parent, identifier) {
-        Expression.call(this, parent);
-
-        this.parent = parent;
-        this.identifier = identifier;
     }
 
     function ExpressionBlock(parent) {
@@ -2462,54 +2494,15 @@ var erg;
                     // Variable Decl
                     var identifier = node.items[0].text;
                     var is_const = node.items[1].type == TOKEN_TYPE_OPERATOR_DECLARATION;
-                    var has_explicity_type = false; // ---node.items[2] instanceof SOMETHINORATHER
+                    var has_explicity_type = node.items[2] instanceof Identifier; // the type name!
 
                     push('var ' + identifier + ' = ');
-                    process_ast(node.items[has_explicity_type ? 3 : 2]);
+
+                    // 4 because identifier|colon|type|equals|expression
+                    // 2 because identifier|:=|expression
+                    process_ast(node.items[has_explicity_type ? 4 : 2]);
+
                     push_inline(";");
-
-                    // var decl_start = is_es6 ? (is_const ? 'const ' : 'let ') : (is_const ? 'var ' : 'var ');
-                    // var start = is_decl ? decl_start : ''; // decl or just assignment;
-
-                    // var note = is_decl && is_const ? ' // const' : '';
-
-                    // var value = 'null';
-                    
-                    // if (is_decl && node.init.length === 0) {
-                    //     // Uninitialized Variable Declarations
-                    //     if (node.type.is_primitive) {
-                    //         value = node.type.default_value;
-                    //     }
-
-                    //     push(start + node.identifier + ' = ' + value + ';');
-                    // } else if (node.init.length === 1 && node.init[0] instanceof Literal) {
-                    //     // Initialized Variables OR Assignment Expression (1 only currently);
-                    //     // TODO(jwwishart) support expressions!!!
-                    //     if (node.init[0].value === null) {
-                    //         value = node.init[0].type.default_value;
-                    //     } else {
-                    //         value = node.init[0].value;
-                    //     }
-
-                    //     if (value == null) {
-                    //         value = 'null';
-                    //     }
-
-                    //     // Format Strings Primitives Properly
-                    //     value = fix_strings(node, value);
-
-                    //     push(start + node.identifier + ' = ' + value + ';' + note);
-                    // } else if (node.init.length === 1 && node.init[0] instanceof TypeInstantiation) {
-                    //     push(start + node.identifier + ' = new ' + node.init[0].type_name + ';');
-                    // } else {
-                    //     // TODO(jwwishart) assignment to a const not allowed!)
-                    //     // TODO(jwwishart) Can above issue be resolved in the parser? Not here!!!
-                    //     if (node.variable_type === 'const') {
-                    //         throw new Error("Constant declaration must be initialized:" + JSON.stringify(node));
-                    //     }
-
-                    //     push(the_var + node.identifier + ' = null;');
-                    // }
                 }());
                 return;
             }
