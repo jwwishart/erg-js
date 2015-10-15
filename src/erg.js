@@ -263,6 +263,10 @@ var erg;
             result += erg.target(context) + "\n\n\n";
         });
 
+        console.log(context);
+        console.log(context.program);
+        console.log(context.program.files[0]);
+
         return result;
     };
 
@@ -890,7 +894,6 @@ var erg;
                                 eat();
 
                                 if (c === '-') { // ---
-                                    eat();
                                     token.type = TOKEN_TYPE_OPERATOR_UNINITIALIZED;
                                     fix_token_type(token);
                                     token.text = '---'
@@ -1318,11 +1321,40 @@ var erg;
             return false;
         }
 
-        function parse_statement(scope) {
+        function parse_block(scope) {
             var loc = get_current_location();
 
             if (parse_trivia()) return true;
 
+            if (accept(TOKEN_TYPE_OPERATOR_BRACE_OPEN)) {
+                var new_scope = new Scope(scope);
+
+                var token = peek();
+                new_scope.items.push(token);
+                eat(token); // {
+
+                parse_statement_block(new_scope);
+
+                expect(TOKEN_TYPE_OPERATOR_BRACE_CLOSE);
+
+                token = peek();
+                new_scope.items.push(token);
+                eat(token); // }
+
+                scope.items.push(new_scope);
+
+                return true;
+            }
+
+            set_current_location(loc);
+            return false;
+        }
+
+        function parse_statement(scope) {
+            var loc = get_current_location();
+
+            if (parse_trivia()) return true;
+            if (parse_block(scope)) return true;
             if (parse_keyword(scope)) return true;
             if (parse_declaration(scope)) return true;
             
@@ -1330,6 +1362,7 @@ var erg;
             // if (parse_if_statement(scope)) return true;
             // if (parse_asm_statement(scope)) return true;
             // if (parse_empty_statement(scope)) return true;
+
 
             set_current_location(loc);
             return false;
@@ -1532,12 +1565,9 @@ var erg;
                 }
 
 
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE
-// TODO(jwwishart) UP TO HERE (do this context failing stuff ?... per statement call maybe????
+                // TODO(jwwishart) RE BELOW NOTES:
+                // - this should happen at the top of statement parsing?
+                // (do this context failing stuff ?... per statement call maybe????
                 // TODO(jwwishart) THIS WON'T WORK: Maybe put these all onto the context...
                 // there could be several situations that could arise... the one
                 // where the longest success (token closest to the end of the file)
@@ -1606,7 +1636,12 @@ var erg;
                     eat(expression.items[expression.items.length - 1]); // eat add-op
 
                     // Next Term...
-                    if (!parse_term(expression)) break;
+                    if (!parse_term(expression)) {
+                        set_current_location(loc);
+                        break;
+                    }
+
+                    loc = get_current_location();
                 }
 
                 scope.items.push(expression);
@@ -1642,7 +1677,12 @@ var erg;
                     eat(term.items[term.item.length - 1]); // eat mult-op
 
                     // Next Factor
-                    if (!parse_factor(term)) break;
+                    if (!parse_factor(term)) {
+                        set_current_location(loc);
+                        break;
+                    }
+
+                    loc = get_current_location();
                 }
 
                 scope.items.push(term);
@@ -1655,6 +1695,8 @@ var erg;
         }
 
         function parse_factor(scope) {
+            var loc = get_current_location();
+
             if (parse_trivia()) return true; // TODO(jwwishart) ensure we do this prior to anything valuable at all times
 
             // if (accept(TOKEN_TYPE_OPERATOR_PAREN_OPEN)) {
@@ -1674,6 +1716,7 @@ var erg;
             if (accept(TOKEN_TYPE_LITERAL_STRING)) return create_factor(scope, "string", peek().text);
 
             if (accept(TOKEN_TYPE_KEYWORD_NULL))   return create_factor(scope, "null", "null");
+            if (accept(TOKEN_TYPE_OPERATOR_UNINITIALIZED))   return create_factor(scope, "---", "---");
 
             // TODO(jwwishart) function_call
             // TODO(jwwishart) identifier
@@ -1683,6 +1726,7 @@ var erg;
             // TODO(jwwishart) binary-expressoin
             // TODO(jwwishart) parenthesis expression
 
+            set_current_location(loc);
             return false;
         }
 
@@ -2332,6 +2376,11 @@ var erg;
             //     BEFORE we do standard Scope objects!
 
             if (node instanceof Literal) {
+                if (node.type === '---') {
+                    push_inline("null");
+                    return;
+                }
+                
                 push_inline(fix_strings(node, node.value));
                 return;
             }
@@ -2368,7 +2417,7 @@ var erg;
                     push("\n");
                 }
 
-                return result;
+                return;
             }
 
             // StructDeclaration
