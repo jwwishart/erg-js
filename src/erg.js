@@ -1357,6 +1357,7 @@ var erg;
             if (parse_block(scope)) return true;
             if (parse_keyword(scope)) return true;
             if (parse_declaration(scope)) return true;
+            if (parse_function_call(scope)) return true;
             
             // TODO(jwwishart) do the following...
             // if (parse_if_statement(scope)) return true;
@@ -1591,6 +1592,7 @@ var erg;
                 eat(token); // ;
             }
 
+
             // function parse_operator(scope, expected_token_type) {
             //     parse_trivia(); // TODO(jwwishart) ?
 
@@ -1603,9 +1605,69 @@ var erg;
             // }
 
             function parse_type(scope) {
-
-
             }
+
+
+        function parse_function_call(scope) {
+            var loc = get_current_location();
+            
+            var call = new FunctionCall();
+
+            if (parse_identifier(call)) {
+                if (parse_function_arguments(call) != false) {
+
+                    return true;
+                }
+            }
+
+            set_current_location(loc);
+
+            return false;
+        }
+
+            function parse_function_arguments(scope) {
+                if (!accept(TOKEN_TYPE_OPERATOR_PAREN_OPEN)) return false;
+
+                var token = peek();
+                scope.items.push(token);
+                eat(token);
+
+                var args = new ArgumentList(scope);
+                scope.items.push(args);
+
+                while (parse_function_argument(args)) {
+                }
+
+                if (!accept(TOKEN_TYPE_OPERATOR_PAREN_CLOSE)) return false;
+
+                token = peek();
+                scope.items.push(token);
+                eat(token);
+
+                parse_semicolon(call,  /* is_expected =*/ true);
+
+                token = peek();
+                scope.items.push(token);
+                eat(token);
+
+                return true;
+            }
+
+                function parse_function_argument(scope) {
+                    var token = null;
+
+                    // Format: name : type
+                    if (parse_identifier(scope)) {
+                        if (!accept(TOKEN_TYPE_OPERATOR_COLON)) return false;
+
+                        token = peek();
+                        scope.items.push(token);
+                        eat(token);
+                    }
+
+                    return false;
+                }
+
 
         // function parse_expression_statement(scope) {
         //     var statement = new ExpressionStatement(scope);
@@ -1997,17 +2059,15 @@ var erg;
         // TODO(jwwishart) default constant value... litearl like a variable declaration
     }
 
-    function FunctionCall(parent, identifier) {
+    function FunctionCall(parent) {
         AstNode.call(this, parent);
-
-        this.identifier = identifier;
+        
         this.args = new ArgumentList(this);
     }
 
     function ArgumentList(parent) {
         AstNode.call(this, parent);
     }
-    ArgumentList.prototype = Object.create(Array.prototype);
 
 
     // @Type System -----------------------------------------------------------
