@@ -32,6 +32,11 @@ module erg {
                 return null;
             };
 
+            compileFile(context: ICompiler, path: string) {
+                // TODO(jwwishart) 
+                throw new Error("Not Implemented");
+            }
+
             current_code: string;
             current_filename: string;
 
@@ -53,13 +58,19 @@ module erg {
 
 
     export interface ICompilerOptions {
-        files: Array<string>;
-        target: TargetType
+        base_working_directory: string;
+        files: Array<File>;
+        target: TargetType;
     }
 
         enum TargetType {
             ES5,
             ES6
+        }
+
+        export class File {
+            path: string = '';
+            is_compiled: boolean = false;
         }
 
     export interface ICompileResult {

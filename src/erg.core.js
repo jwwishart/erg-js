@@ -11,6 +11,10 @@ var erg;
             return null;
         };
         ;
+        Compiler.prototype.compileFile = function (context, path) {
+            // TODO(jwwishart) 
+            throw new Error("Not Implemented");
+        };
         return Compiler;
     })();
     erg.Compiler = Compiler;
@@ -24,4 +28,12 @@ var erg;
         TargetType[TargetType["ES5"] = 0] = "ES5";
         TargetType[TargetType["ES6"] = 1] = "ES6";
     })(TargetType || (TargetType = {}));
+    var File = (function () {
+        function File() {
+            this.path = '';
+            this.is_compiled = false;
+        }
+        return File;
+    })();
+    erg.File = File;
 })(erg || (erg = {}));
