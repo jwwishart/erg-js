@@ -17,7 +17,7 @@ module erg {
         col: number;
         text: string;
 
-        assign_location(info: ScannerLocationInfo) {
+        assign_location(info: ScannerItemInfo) {
             this.filename = info.filename;
             this.line = info.line;
             this.col = info.col;

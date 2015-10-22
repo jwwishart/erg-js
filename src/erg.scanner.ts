@@ -5,11 +5,13 @@ module erg {
     export interface IScanner {
         peek(): string;
         eat(): void;
-        getLocation(): ScannerLocationInfo;
+        get_lexeme(): ScannerItemInfo;
+
+        on_eat(callback: (ScannerItemInfo) => void) : void
     }
 
 
-    export class ScannerLocationInfo {
+    export class ScannerItemInfo {
         filename: string;
         line: number;
         col: number;
@@ -26,9 +28,9 @@ module erg {
         private line = 1;
         private col = this.firstCol;
 
-        constructor(context: ICompiler) {
-            this.code = context.current_code;
-            this.filename = context.current_filename;
+        constructor(filename: string, code: string) {
+            this.code = code;
+            this.filename = filename;
         }
 
         peek(): string {
@@ -40,6 +42,10 @@ module erg {
         }
 
         eat(): void {
+            if (this.on_eat_callback != null) {
+                this.on_eat_callback(this.get_lexeme());
+            }
+
             if (this.code[this.i] === '\n') {
                 this.line++;
                 this.col = this.firstCol - 1; // we will increment by one below so we need to remove that here!
@@ -49,8 +55,8 @@ module erg {
             this.col++;
         }
 
-        getLocation(): ScannerLocationInfo {
-            var result = new ScannerLocationInfo();
+        get_lexeme(): ScannerItemInfo {
+            var result = new ScannerItemInfo();
 
             result.filename = this.filename;
             result.line = this.line;
@@ -59,15 +65,21 @@ module erg {
 
             return result;
         }
+
+        on_eat(callback: (ScannerItemInfo) => void) {
+            this.on_eat_callback = callback;
+        }
+
+        private on_eat_callback: (ScannerItemInfo) => void = null;
     }
 
     export interface IScannerFactory {
-        create(context: ICompiler): IScanner;
+        create(filename: string, code: string): IScanner;
     }
 
         export class DefaultScannerFactory implements IScannerFactory {
-            create(context: ICompiler): IScanner {
-                return new Scanner(context);
+            create(filename: string, code: string): IScanner {
+                return new Scanner(filename, code);
             }
         }
 }

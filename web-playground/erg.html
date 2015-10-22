@@ -1,7 +1,11 @@
 <html>
     <head>
         <title></title>
-        <script src="../src/erg.js"></script>
+        <!--<script src="../src/erg.js"></script>-->
+        <script src="../src/erg.core.js"></script>
+        <script src="../src/erg.scanner.js"></script>
+        <script src="../src/erg.tokenizer.js"></script>
+        <script src="../src/erg.parser.js"></script>
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.js"></script>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/default.min.css">
@@ -209,23 +213,14 @@ my_print(12);
                 var code = mirror.getValue();
                 var output = document.getElementById('output');
 
-                console.log('ergjs | (C) 2015 Justin Wishart - Version ' + erg.VERSION.join('.') + '\n');
+                var compiler = new erg.createDebugCompiler();
+
+                console.log('ergjs | (C) 2015 Justin Wishart - Version ' + compiler.VERSION.join('.') + '\n');
 
                 output.textContent = 
-                    erg.compile({ 
-                        'erg.html': code 
-                    },{
-                        logger: {
-                            log: function(group, message) {
-                                if ($.type(message) === 'string') {
-                                    console.info(group + " | " + message);
-                                } else {
-                                    console.info(group, message);
-                                }
-                            }
-                        },
-                        //target: 'es6'
-                    });
+                    compiler.compile([
+                        new erg.FileItem('erg.html', code)
+                    ]).output_text;
 
                 console.log("\nCompilation Completed!\n\n");
 
