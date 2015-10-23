@@ -1,3 +1,4 @@
+/// <reference path="erg.init.ts" />
 /// <reference path="erg.scanner.ts" />
 /// <reference path="erg.tokenizer.ts" />
 /// <reference path="erg.parser.ts" />
@@ -39,19 +40,23 @@ module erg {
                 var scanner = this.ScannerFactory.create(file.filename, file.code);
 
                 // Set up logging
-                if (this.options.debug_compiler && this.options.scanner_logger != null) {
-                    scanner.on_eat(this.options.scanner_logger);
+                // if (this.options.debug_compiler && this.options.scanner_logger != null) {
+                //     scanner.on_eat(this.options.scanner_logger);
+                // }
+
+                // while (scanner.peek() !== null) {
+                //     scanner.eat();
+                // }
+
+                var tokenizer = this.TokenizerFactory.create(this, scanner);
+
+                if (this.options.debug_compiler && this.options.tokenizer_logger != null) {
+                    tokenizer.on_eat(this.options.tokenizer_logger);
+                }                
+
+                while (tokenizer.peek().type !== TokenType.EOF) {
+                    tokenizer.eat();
                 }
-
-                while (scanner.peek() !== null) {
-                    scanner.eat();
-                }
-
-                // var tokenizer = this.TokenizerFactory.create(this, scanner);
-
-                // if (this.options.debug_compiler && this.options.tokenizer_logger != null) {
-                //     scanner.on_eat(this.options.tokenizer_logger);
-                // }                
             });
 
             return this.results;
@@ -126,6 +131,18 @@ module erg {
                 + " (ln: " + lexeme.line + ", col: " + lexeme.col + ")");
         }
 
+        compiler.options.tokenizer_logger = function(token: Token) {
+            var text = token.text;
+
+            if (text === '\n') text = '\\n';
+            if (text === '\r') text = '\\r';
+            if (text === '\t') text = '\\t';
+
+            console.log("Token: " + token.type_name + "(" + token.type + ") - File: " + token.filename
+                + " (ln: " + token.line + ", col: " + token.col + ") '" + text + "' " 
+                + (token.type == TokenType.LITERAL ? "Literal Type: " + LiteralType[token.literal_type] : ''));
+        }
+
         compiler.options.debug_compiler = true;
 
         return compiler;
@@ -159,5 +176,13 @@ module erg {
         warnings: Array<string>;
         errors: Array<string>;
     }
+
+
+
+    // Helper Functions
+    //
+
+
+    // error and other generally available helper function etc...
 
 }

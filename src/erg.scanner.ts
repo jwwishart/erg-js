@@ -3,11 +3,14 @@
 module erg {
 
     export interface IScanner {
-        peek(): string;
+        peek(ahead: number): string;
         eat(): void;
+
         get_lexeme(): ScannerItemInfo;
 
-        on_eat(callback: (ScannerItemInfo) => void) : void
+        revert_position(pos: ScannerItemInfo): void;
+
+        on_eat(callback: (ScannerItemInfo) => void) : void;
     }
 
 
@@ -15,7 +18,9 @@ module erg {
         filename: string;
         line: number;
         col: number;
-        text: string
+        text: string;
+
+        index: number;
     }
 
 
@@ -33,9 +38,17 @@ module erg {
             this.filename = filename;
         }
 
-        peek(): string {
-            if (this.i < this.code.length) {
-                return this.code[this.i];
+        peek(ahead: number = 0): string {
+            if (ahead < 0) throw new Error("Scanner.peek()'s ahead argument cannot be a negative number");
+
+            if (ahead > 0) {
+                if ((this.i + ahead) < this.code.length) {
+                    return this.code[this.i + ahead];
+                }
+            } else {
+                if (this.i < this.code.length) {
+                    return this.code[this.i];
+                }
             }
 
             return null;
@@ -62,8 +75,15 @@ module erg {
             result.line = this.line;
             result.col = this.col;
             result.text = this.code[this.i];
+            result.index = this.i;
 
             return result;
+        }
+
+        revert_position(pos: ScannerItemInfo): void {
+            this.i = pos.index;
+            this.line = pos.line;
+            this.col = pos.col;
         }
 
         on_eat(callback: (ScannerItemInfo) => void) {

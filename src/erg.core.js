@@ -1,3 +1,4 @@
+/// <reference path="erg.init.ts" />
 /// <reference path="erg.scanner.ts" />
 /// <reference path="erg.tokenizer.ts" />
 /// <reference path="erg.parser.ts" />
@@ -21,16 +22,19 @@ var erg;
                 _this.context.current = file;
                 var scanner = _this.ScannerFactory.create(file.filename, file.code);
                 // Set up logging
-                if (_this.options.debug_compiler && _this.options.scanner_logger != null) {
-                    scanner.on_eat(_this.options.scanner_logger);
+                // if (this.options.debug_compiler && this.options.scanner_logger != null) {
+                //     scanner.on_eat(this.options.scanner_logger);
+                // }
+                // while (scanner.peek() !== null) {
+                //     scanner.eat();
+                // }
+                var tokenizer = _this.TokenizerFactory.create(_this, scanner);
+                if (_this.options.debug_compiler && _this.options.tokenizer_logger != null) {
+                    tokenizer.on_eat(_this.options.tokenizer_logger);
                 }
-                while (scanner.peek() !== null) {
-                    scanner.eat();
+                while (tokenizer.peek().type !== erg.TokenType.EOF) {
+                    tokenizer.eat();
                 }
-                // var tokenizer = this.TokenizerFactory.create(this, scanner);
-                // if (this.options.debug_compiler && this.options.tokenizer_logger != null) {
-                //     scanner.on_eat(this.options.tokenizer_logger);
-                // }                
             });
             return this.results;
         };
@@ -87,6 +91,18 @@ var erg;
                 text = '\\t';
             console.log("Lexeme: '" + text + "' - File: " + lexeme.filename
                 + " (ln: " + lexeme.line + ", col: " + lexeme.col + ")");
+        };
+        compiler.options.tokenizer_logger = function (token) {
+            var text = token.text;
+            if (text === '\n')
+                text = '\\n';
+            if (text === '\r')
+                text = '\\r';
+            if (text === '\t')
+                text = '\\t';
+            console.log("Token: " + token.type_name + "(" + token.type + ") - File: " + token.filename
+                + " (ln: " + token.line + ", col: " + token.col + ") '" + text + "' "
+                + (token.type == erg.TokenType.LITERAL ? "Literal Type: " + erg.LiteralType[token.literal_type] : ''));
         };
         compiler.options.debug_compiler = true;
         return compiler;

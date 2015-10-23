@@ -17,9 +17,19 @@ var erg;
             this.code = code;
             this.filename = filename;
         }
-        Scanner.prototype.peek = function () {
-            if (this.i < this.code.length) {
-                return this.code[this.i];
+        Scanner.prototype.peek = function (ahead) {
+            if (ahead === void 0) { ahead = 0; }
+            if (ahead < 0)
+                throw new Error("Scanner.peek()'s ahead argument cannot be a negative number");
+            if (ahead > 0) {
+                if ((this.i + ahead) < this.code.length) {
+                    return this.code[this.i + ahead];
+                }
+            }
+            else {
+                if (this.i < this.code.length) {
+                    return this.code[this.i];
+                }
             }
             return null;
         };
@@ -40,7 +50,13 @@ var erg;
             result.line = this.line;
             result.col = this.col;
             result.text = this.code[this.i];
+            result.index = this.i;
             return result;
+        };
+        Scanner.prototype.revert_position = function (pos) {
+            this.i = pos.index;
+            this.line = pos.line;
+            this.col = pos.col;
         };
         Scanner.prototype.on_eat = function (callback) {
             this.on_eat_callback = callback;
