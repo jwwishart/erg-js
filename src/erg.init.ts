@@ -34,13 +34,13 @@ module erg {
         '/': true,
     };
 
-    export let keywords = [
-        'asm',
+    export let keywords = {
+        'asm': true,
 
-        'void',
-        'struct',
-        'enum',
-    ];
+        'void': true,
+        'struct': true,
+        'enum': true,
+    };
 
     export let literals = [
         'null',

@@ -5,7 +5,7 @@
 var erg;
 (function (erg) {
     var Compiler = (function () {
-        function Compiler(scanner_factory, tokenizer_factory, IParserFactory, IGeneratorFactory) {
+        function Compiler(scanner_factory, tokenizer_factory, parser_factory, IGeneratorFactory) {
             // Options
             //
             this.options = new CompilerOptions();
@@ -14,11 +14,15 @@ var erg;
             this.VERSION = [0, 0, 4];
             this.ScannerFactory = scanner_factory;
             this.TokenizerFactory = tokenizer_factory;
+            this.ParserFactory = parser_factory;
         }
         Compiler.prototype.compile = function (files) {
             var _this = this;
-            var program = new erg.Program();
+            var program = new erg.ast.Program();
+            this.results.program = program;
             files.forEach(function (file) {
+                var fileScope = new erg.ast.File(file.filename);
+                program.add_item(fileScope);
                 _this.context.current = file;
                 var scanner = _this.ScannerFactory.create(file.filename, file.code);
                 // Set up logging
@@ -29,12 +33,18 @@ var erg;
                 //     scanner.eat();
                 // }
                 var tokenizer = _this.TokenizerFactory.create(_this, scanner);
-                if (_this.options.debug_compiler && _this.options.tokenizer_logger != null) {
-                    tokenizer.on_eat(_this.options.tokenizer_logger);
-                }
-                while (tokenizer.peek().type !== erg.TokenType.EOF) {
-                    tokenizer.eat();
-                }
+                // if (this.options.debug_compiler && this.options.tokenizer_logger != null) {
+                //     tokenizer.on_eat(this.options.tokenizer_logger);
+                // }                
+                // while (tokenizer.peek().type !== TokenType.EOF) {
+                //     tokenizer.eat();
+                // }
+                var parser = _this.ParserFactory.create(_this, tokenizer);
+                parser.parse_file(fileScope);
+                // TODO(jwwishart) should we throw/log an error at this point?.. the file is not able to be parsed... so ???
+                if (fileScope.success === false)
+                    _this.results.success = false;
+                fileScope.is_done = true; // TODO(jwwishart) is it ACTUALLY done? Errors? etc???
             });
             return this.results;
         };
@@ -67,6 +77,7 @@ var erg;
     var CompilerResults = (function () {
         function CompilerResults() {
             this.output_text = '';
+            this.program = null;
             this.success = true;
             this.warnings = new Array();
             this.errors = new Array();
@@ -80,7 +91,7 @@ var erg;
     }
     erg.createDefaultCompiler = createDefaultCompiler;
     function createDebugCompiler() {
-        var compiler = new Compiler(new erg.DefaultScannerFactory(), new erg.DefaultTokenizerFactory(), null, null);
+        var compiler = new Compiler(new erg.DefaultScannerFactory(), new erg.DefaultTokenizerFactory(), new erg.parser.DefaultParserFactory(), null);
         compiler.options.scanner_logger = function (lexeme) {
             var text = lexeme.text;
             if (text === '\n')

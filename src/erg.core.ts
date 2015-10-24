@@ -8,33 +8,40 @@ module erg {
     export interface ICompiler {
         ScannerFactory : IScannerFactory;
 
-        compile(files: Array<FileItem>): CompileResult,
+        compile(files: Array<FileItem>): CompilerResult,
 
         options: CompilerOptions;
         context: ExecutionContext;
-        results: CompileResult;
+        results: CompilerResult;
 
         VERSION: Array<number>
     }
 
 
     export class Compiler implements ICompiler {
+
         ScannerFactory : IScannerFactory;
         TokenizerFactory : ITokenizerFactory;
+        ParserFactory : parser.IParserFactory;
 
         constructor(scanner_factory: IScannerFactory
                   , tokenizer_factory: ITokenizerFactory
-                  , IParserFactory
+                  , parser_factory: parser.IParserFactory
                   , IGeneratorFactory) 
         {
             this.ScannerFactory = scanner_factory;
             this.TokenizerFactory = tokenizer_factory;
+            this.ParserFactory = parser_factory;
         }
 
-        compile(files: Array<FileItem>) : CompileResult {
-            var program = new Program();
+        compile(files: Array<FileItem>) : CompilerResult {
+            var program = new ast.Program();
+            this.results.program = program;
 
             files.forEach((file) => {
+                var fileScope = new ast.File(file.filename);
+                program.add_item(fileScope);
+
                 this.context.current = file;
 
                 var scanner = this.ScannerFactory.create(file.filename, file.code);
@@ -50,13 +57,21 @@ module erg {
 
                 var tokenizer = this.TokenizerFactory.create(this, scanner);
 
-                if (this.options.debug_compiler && this.options.tokenizer_logger != null) {
-                    tokenizer.on_eat(this.options.tokenizer_logger);
-                }                
+                // if (this.options.debug_compiler && this.options.tokenizer_logger != null) {
+                //     tokenizer.on_eat(this.options.tokenizer_logger);
+                // }                
 
-                while (tokenizer.peek().type !== TokenType.EOF) {
-                    tokenizer.eat();
-                }
+                // while (tokenizer.peek().type !== TokenType.EOF) {
+                //     tokenizer.eat();
+                // }
+
+                var parser = this.ParserFactory.create(this, tokenizer);
+                parser.parse_file(fileScope);
+
+                // TODO(jwwishart) should we throw/log an error at this point?.. the file is not able to be parsed... so ???
+                if (fileScope.success === false) this.results.success = false;
+
+                fileScope.is_done = true; // TODO(jwwishart) is it ACTUALLY done? Errors? etc???
             });
 
             return this.results;
@@ -73,7 +88,7 @@ module erg {
 
         options: CompilerOptions = new CompilerOptions();
         context: ExecutionContext = new ExecutionContext();
-        results: CompileResult = new CompilerResults();
+        results: CompilerResult = new CompilerResults();
 
 
         VERSION: Array<number> = [0 ,0 ,4];
@@ -99,7 +114,9 @@ module erg {
 
     export class CompilerResults {
         output_text: string = '';
-        
+
+        program: ast.Program = null;
+
         success: boolean = true;
 
         warnings: Array<string> = new Array<string>();
@@ -117,7 +134,7 @@ module erg {
     export function createDebugCompiler() : ICompiler {
         var compiler = new Compiler(new DefaultScannerFactory()
                                   , new DefaultTokenizerFactory()
-                                  , null
+                                  , new parser.DefaultParserFactory()
                                   , null);
 
         compiler.options.scanner_logger = function(lexeme: ScannerItemInfo) {
@@ -168,8 +185,10 @@ module erg {
     }
 
 
-    export interface CompileResult {
+    export interface CompilerResult {
         output_text: string;
+
+        program: ast.Program;
 
         success: boolean;
 

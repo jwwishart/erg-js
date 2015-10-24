@@ -218,12 +218,19 @@ my_print(12);
 
                 console.log('ergjs | (C) 2015 Justin Wishart - Version ' + compiler.VERSION.join('.') + '\n');
 
-                output.textContent = 
-                    compiler.compile([
+                var results = compiler.compile([
                         new erg.FileItem('erg.html', code)
-                    ]).output_text;
+                    ]);
 
-                console.log("\nCompilation Completed!\n\n");
+                if (results.success === false) {
+                    console.log("\nCompilation Failed :o( \n\n");
+                } else {
+                    console.log("\nCompilation Completed :o) \n\n");
+                }
+
+                output.textContent = results.output_text;
+
+                console.log(results);
 
                 eval(output.textContent);
 

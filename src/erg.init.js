@@ -25,12 +25,12 @@ var erg;
         '*': true,
         '/': true
     };
-    erg.keywords = [
-        'asm',
-        'void',
-        'struct',
-        'enum',
-    ];
+    erg.keywords = {
+        'asm': true,
+        'void': true,
+        'struct': true,
+        'enum': true
+    };
     erg.literals = [
         'null',
         'true',

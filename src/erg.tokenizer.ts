@@ -206,7 +206,51 @@ module erg {
             return false;
         }
 
-        function handle_identifiers() {
+        function get_asm_block() {
+            var result = '';
+            var depth = 0;
+            var foundStart = false;
+            var c;
+
+            while ((c = peek()) !== null) {
+                if (depth === 0 && foundStart) break;
+
+                if (c === "{") {
+                        result += c;
+                    if (foundStart === true) {
+                    }
+
+                    foundStart = true;
+                    depth++;
+                    eat(); // Skip adding the opening {
+                    continue; 
+                }
+
+                if (c === "}" && foundStart) {
+                    depth--;
+
+                        result += c;
+                    if (depth !== 0) {
+                    }
+
+                    eat(); // Skip adding the closing }
+                    continue; 
+                }
+
+                result += c;
+                eat();
+            }
+
+            return result;
+        }
+
+        function handle_identifiers_and_keywords() {
+            function handle_special_keywords() {
+                if (token.text === 'asm') {
+                    token.text += get_asm_block();
+                }
+            }
+
             var c;
             var result = '';
             var start_pos = scanner.get_lexeme();
@@ -219,8 +263,15 @@ module erg {
             }
 
             if (result.length > 0) {
-                set_token(TokenType.IDENTIFIER, start_pos);
-                token.text = result; // Lexeme text by default. write identifier!
+                if (keywords[result]) {
+                    set_token(TokenType.KEYWORD, start_pos);
+                    token.text = result; // Lexeme text by default. write identifier!
+
+                    handle_special_keywords();
+                } else {
+                    set_token(TokenType.IDENTIFIER, start_pos);
+                    token.text = result; // Lexeme text by default. write identifier!
+                }
 
                 return true;
             }
@@ -336,8 +387,7 @@ module erg {
                 if (handle_whitespace()) return token;
                 if (handle_comments()) return token;
                 if (handle_operators()) return token;
-                //if (handle_keywords()) return token;
-                if (handle_identifiers()) return token;
+                if (handle_identifiers_and_keywords()) return token;
                 if (handle_literals()) return token;
 
                 if (peek() == null) return set_token(TokenType.EOF)
