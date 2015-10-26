@@ -10,6 +10,8 @@ var erg;
             this.line = -1;
             this.col = -1;
             this.text = '';
+            this.index = -1;
+            this.location = null;
             this.literal_type = LiteralType.VOID;
             this.type = type;
             this.type_name = TokenType[type];
@@ -19,6 +21,8 @@ var erg;
             this.line = info.line;
             this.col = info.col;
             this.text = info.text;
+            this.index = info.index;
+            this.location = info;
         };
         return Token;
     })();
@@ -315,12 +319,6 @@ var erg;
                     on_eat_callback(token);
                 }
                 token = null;
-            },
-            get_index: function () {
-                return _index;
-            },
-            set_index: function (index) {
-                _index = index;
             },
             on_eat: function (callback) {
                 on_eat_callback = callback;

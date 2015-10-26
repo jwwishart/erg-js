@@ -87,30 +87,47 @@ var erg;
         })(AstNode);
         ast.Identifier = Identifier;
     })(ast = erg.ast || (erg.ast = {}));
-    var parser;
-    (function (parser) {
-        var Parser = (function () {
-            function Parser(context, tokenizer) {
-                this.compiler = context;
-                this.tokenizer = tokenizer;
+    var default_parser;
+    (function (default_parser) {
+        var Parser = function (compiler, tokenizer) {
+            var current_scope = null;
+            function peek() { tokenizer.peek(); }
+            function eat() { tokenizer.eat(); }
+            function create_symbol(context, symbol) {
+                var scope = context;
+                // TODO(jwwishart) find the SCOPE for the symbol
+                while (scope != null && !(scope instanceof ast.Scope)) {
+                    scope = scope.parent;
+                }
+                if (scope != null) {
+                    scope.symbols.push(symbol);
+                }
+                throw new Error("Error Creating Symbol. Unable to fine a scope! ???");
             }
-            Parser.prototype.parse_file = function (file) {
-                if (this.parse_statements(file))
-                    return true;
-                file.success = false;
-                return false;
-            };
-            Parser.prototype.parse_statements = function (context) {
-                while (this.parse_statement(context)) {
+            function revert(token) {
+                tokenizer.revert(token);
+            }
+            function parse_statements(context) {
+                while (parse_statement(context)) {
                 }
                 return false;
-            };
-            Parser.prototype.parse_statement = function (context) {
+            }
+            function parse_statement(context) {
+                var loc = peek();
+                if (parse_declaration(context))
+                    return true;
                 return false;
+            }
+            return {
+                parse_file: function (file) {
+                    current_scope = file;
+                    if (parse_statements(file))
+                        return true;
+                    file.success = false;
+                    return false;
+                }
             };
-            return Parser;
-        })();
-        parser.Parser = Parser;
+        };
         // Helpers
         //
         function create_symbol(scope, symbol) {
@@ -118,16 +135,27 @@ var erg;
         }
         // Parse Functions
         //
-        function parse_statements(scope) {
-        }
+        // function parse_node(node: ast.AstNode) {
+        //     function is_a(type) {
+        //         return node instanceof type;
+        //     }
+        //     if (is_a(ast.File)) { }
+        //     if (is_a(ast.VariableDeclaration)) { }
+        //     // if (is_a(ast.StructDeclaration)) { }
+        //     // if (is_a(ast.EnumDeclaration)) { }
+        //     // if (is_a(ast.FunctionDeclaration)) { }
+        //     // if (is_a(ast.FunctionCall)) { }
+        //     // if (is_a(ast.ArgumentList)) { }
+        //     if (is_a(ast.Scope)) { } // TODO(jwwishart) OR Function body?
+        // }
         var DefaultParserFactory = (function () {
             function DefaultParserFactory() {
             }
             DefaultParserFactory.prototype.create = function (context, tokenizer) {
-                return new Parser(context, tokenizer);
+                return Parser(context, tokenizer);
             };
             return DefaultParserFactory;
         })();
-        parser.DefaultParserFactory = DefaultParserFactory;
-    })(parser = erg.parser || (erg.parser = {}));
+        default_parser.DefaultParserFactory = DefaultParserFactory;
+    })(default_parser = erg.default_parser || (erg.default_parser = {}));
 })(erg || (erg = {}));

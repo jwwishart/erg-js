@@ -79,37 +79,70 @@ module erg {
             parse_file(file: ast.File): boolean;
         }
 
+        export interface IParserFactory {
+            create(context: ICompiler, tokenizer: ITokenizer): IParser;
+        }
 
-        export class Parser implements IParser {
-            compiler: ICompiler;
-            tokenizer: ITokenizer;
 
-            constructor(context: ICompiler, tokenizer: ITokenizer) {
-                this.compiler = context;
-                this.tokenizer = tokenizer;
+        
+    }
+
+    export module default_parser {
+
+        let Parser = function(compiler: ICompiler, tokenizer: ITokenizer) {
+            var current_scope: ast.Scope = null;
+
+            function peek() { tokenizer.peek(); }
+            function eat() { tokenizer.eat(); }
+            function create_symbol(context: ast.AstNode, symbol: ast.Symbol) {
+                var scope = context;
+
+                // TODO(jwwishart) find the SCOPE for the symbol
+                while (scope != null && !(scope instanceof ast.Scope)) {
+                    scope = scope.parent;
+                }
+
+                if (scope != null) {
+                    (<ast.Scope>scope).symbols.push(symbol);
+                }
+
+                throw new Error("Error Creating Symbol. Unable to fine a scope! ???");
+            }
+            function revert(token: Token) {
+                tokenizer.revert(token);
             }
 
-            parse_file(file: ast.File): boolean {
-                if (this.parse_statements(file)) return true;
-
-                file.success = false;
-
-                return false;
-            }
-
-            parse_statements(context: ast.AstNode): boolean {
-                while (this.parse_statement(context)) {
+            function parse_statements(context: ast.AstNode): boolean {
+                while (parse_statement(context)) {
 
                 }
 
                 return false;
             }
 
-            parse_statement(context: ast.AstNode): boolean {
+            function parse_statement(context: ast.AstNode): boolean {
+                let loc = peek();
+
+                if (parse_declaration(context)) return true;
+
+
 
                 return false;
             }
-        }
+
+
+            return {
+                parse_file: function(file: ast.File): boolean {
+                    current_scope = file;
+
+                    if (parse_statements(file)) return true;
+
+                    file.success = false;
+
+                    return false;
+                }
+            };
+        };
 
 
         // Helpers
@@ -123,8 +156,6 @@ module erg {
         // Parse Functions
         //
 
-        function parse_statements(scope: ast.Scope) {
-        }
 
         // function parse_node(node: ast.AstNode) {
         //     function is_a(type) {
@@ -143,13 +174,10 @@ module erg {
         //     if (is_a(ast.Scope)) { } // TODO(jwwishart) OR Function body?
         // }
 
-        export interface IParserFactory {
-            create(context: ICompiler, tokenizer: ITokenizer): IParser;
-        }
 
-            export class DefaultParserFactory implements IParserFactory {
-                create(context: ICompiler, tokenizer: ITokenizer): IParser {
-                    return new Parser(context, tokenizer);
+            export class DefaultParserFactory implements parser.IParserFactory {
+                create(context: ICompiler, tokenizer: ITokenizer): parser.IParser {
+                    return Parser(context, tokenizer);
                 }
             }
     }

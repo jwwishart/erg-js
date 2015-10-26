@@ -134,7 +134,7 @@ module erg {
     export function createDebugCompiler() : ICompiler {
         var compiler = new Compiler(new DefaultScannerFactory()
                                   , new DefaultTokenizerFactory()
-                                  , new parser.DefaultParserFactory()
+                                  , new default_parser.DefaultParserFactory()
                                   , null);
 
         compiler.options.scanner_logger = function(lexeme: ScannerItemInfo) {

@@ -91,7 +91,7 @@ var erg;
     }
     erg.createDefaultCompiler = createDefaultCompiler;
     function createDebugCompiler() {
-        var compiler = new Compiler(new erg.DefaultScannerFactory(), new erg.DefaultTokenizerFactory(), new erg.parser.DefaultParserFactory(), null);
+        var compiler = new Compiler(new erg.DefaultScannerFactory(), new erg.DefaultTokenizerFactory(), new erg.default_parser.DefaultParserFactory(), null);
         compiler.options.scanner_logger = function (lexeme) {
             var text = lexeme.text;
             if (text === '\n')

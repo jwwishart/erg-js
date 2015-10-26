@@ -17,6 +17,9 @@ module erg {
         line: number = -1;
         col: number = -1;
         text: string = '';
+        index: number = -1;
+
+        location: ScannerItemInfo = null;
 
         literal_type: LiteralType = LiteralType.VOID;
 
@@ -25,6 +28,9 @@ module erg {
             this.line = info.line;
             this.col = info.col;
             this.text = info.text;
+            this.index = info.index;
+
+            this.location = info;
         }
     }
 
@@ -55,10 +61,9 @@ module erg {
         peek(): Token;
         eat(): void;
 
-        get_index() : number;
-        set_index(index: number): void;
+        revert_position(token: Token): void;
 
-        on_eat(callback: (Token) => void) : void
+        on_eat(callback: (Token) => void): void
     }
 
 
@@ -407,14 +412,6 @@ module erg {
                 }
 
                 token = null;
-            },
-
-            get_index(): number {
-                return _index;
-            },
-
-            set_index(index: number) { 
-                _index = index;
             },
 
             on_eat(callback: (Token) => void) {
