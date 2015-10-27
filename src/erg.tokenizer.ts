@@ -57,11 +57,17 @@ module erg {
     }
 
 
+    interface ITokenizerPeekArgs {
+        skip_whitespace?: boolean,
+        skip_comments?: boolean,
+    }
+
     export interface ITokenizer {
         peek(): Token;
-        eat(): void;
 
-        revert_position(token: Token): void;
+        eat(args: ITokenizerPeekArgs): void;
+
+        revert_to(token: Token): void;
 
         on_eat(callback: (Token) => void): void
     }
@@ -87,12 +93,13 @@ module erg {
             return token; // For EOF situation
         }
 
-        function handle_whitespace() {
+        function handle_whitespace(): boolean {
             var c = peek();
 
             if (whitespace.indexOf(c) != -1) {
                 set_token(TokenType.WHITESPACE);
                 eat();
+
                 return true;
             }
 
@@ -375,7 +382,7 @@ module erg {
         }
 
         return {
-            peek(): Token {
+            peek(args: ITokenizerPeekArgs = null): Token {
                 // Return previously peeked token.
                 //
 
@@ -406,16 +413,32 @@ module erg {
                 TOKEN_ERROR(lexeme, "Syntax error, unexpected token '" + lexeme.text + "'");
             },
 
-            eat(): void {
-                if (on_eat_callback != null) {
-                    on_eat_callback(token);
-                }
+            eat(args: ITokenizerPeekArgs): void {
+                while (true) {
+                    if (on_eat_callback != null) {
+                        on_eat_callback(token);
+                    }
 
-                token = null;
+                    token = null;
+
+                    this.peek(); // Move to next token for test below!
+
+                    // Skip
+                    if (args) {
+                        if (args.skip_whitespace && token.type == TokenType.WHITESPACE) continue;
+                        if (args.skip_comments   && token.type == TokenType.COMMENTS)   continue;
+                    }
+
+                    return;
+                }
             },
 
             on_eat(callback: (Token) => void) {
                 on_eat_callback = callback;
+            },
+
+            revert_to(token: Token) {
+                scanner.revert_position(token);
             }
         };
     }

@@ -3,6 +3,10 @@
 /// <reference path="erg.tokenizer.ts" />
 /// <reference path="erg.parser.ts" />
 
+
+// TypeScript version 1.6.2 was used for this project
+
+
 module erg {
 
     export interface ICompiler {

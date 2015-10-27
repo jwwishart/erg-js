@@ -2,6 +2,7 @@
 /// <reference path="erg.scanner.ts" />
 /// <reference path="erg.tokenizer.ts" />
 /// <reference path="erg.parser.ts" />
+// TypeScript version 1.6.2 was used for this project
 var erg;
 (function (erg) {
     var Compiler = (function () {

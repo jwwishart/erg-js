@@ -3,8 +3,7 @@
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
-    __.prototype = b.prototype;
-    d.prototype = new __();
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
 var erg;
 (function (erg) {
@@ -34,7 +33,9 @@ var erg;
                 this.items = new Array();
             }
             AstNode.prototype.add_item = function (node) {
-                node.parent = this; // Set Parent for new Item
+                if (node instanceof ast.AstNode) {
+                    node.parent = this; // Set Parent for new Item
+                }
                 this.items.push(node); // Add item
             };
             return AstNode;
@@ -74,6 +75,9 @@ var erg;
             __extends(VariableDeclaration, _super);
             function VariableDeclaration() {
                 _super.apply(this, arguments);
+                this.identifier = '';
+                this.type = '';
+                this.is_type_checked = false;
             }
             return VariableDeclaration;
         })(AstNode);
@@ -91,8 +95,15 @@ var erg;
     (function (default_parser) {
         var Parser = function (compiler, tokenizer) {
             var current_scope = null;
-            function peek() { tokenizer.peek(); }
-            function eat() { tokenizer.eat(); }
+            // Helpers
+            //
+            function peek() { return tokenizer.peek(); }
+            function eat() {
+                tokenizer.eat({
+                    skip_whitespace: true,
+                    skip_comments: true
+                });
+            }
             function create_symbol(context, symbol) {
                 var scope = context;
                 // TODO(jwwishart) find the SCOPE for the symbol
@@ -105,8 +116,20 @@ var erg;
                 throw new Error("Error Creating Symbol. Unable to fine a scope! ???");
             }
             function revert(token) {
-                tokenizer.revert(token);
+                tokenizer.revert_to(token);
             }
+            function accept(type, require) {
+                if (require === void 0) { require = false; }
+                if (peek().type === type) {
+                    return true;
+                }
+                if (require) {
+                    throw new Error("Parser Error: Expected token '" + erg.TokenType[type] + "' but got a '" + erg.TokenType[peek().type] + "'");
+                }
+                return false;
+            }
+            // Parse Functions
+            //
             function parse_statements(context) {
                 while (parse_statement(context)) {
                 }
@@ -116,11 +139,90 @@ var erg;
                 var loc = peek();
                 if (parse_declaration(context))
                     return true;
+                revert(loc);
                 return false;
+            }
+            function parse_declaration(context) {
+                var loc = peek();
+                if (accept(erg.TokenType.IDENTIFIER)) {
+                    // Identifier
+                    var identifier = peek().text;
+                    eat();
+                    // Operator
+                    if (accept(erg.TokenType.OPERATOR)
+                        && (peek().text === ":"
+                            || peek().text === ":="
+                            || peek().text === "::")) {
+                        // --------------------------------------------------
+                        // WARNING: POINT OF NO RETURN: WE MUST HAVE A DECL -
+                        // --------------------------------------------------
+                        var is_constant = peek().text === '::';
+                        var infer_type = peek().text === ':=' || is_constant;
+                        eat(); // operator
+                        var is_enum = false;
+                        var is_struct = false;
+                        if (is_constant && accept(erg.TokenType.KEYWORD)) {
+                            // struct
+                            if (peek().text === 'struct') {
+                                // TODO(jwwishart) parse_struct_declaration();
+                                throw new Error("STRUCT: NOT IMPLEMENTED");
+                                return true;
+                            }
+                            // enum 
+                            if (peek().text === 'enum') {
+                                // TODO(jwwishart) parse_enum_declaration();
+                                throw new Error("ENUM: NOT IMPLEMENTED");
+                                return true;
+                            }
+                        }
+                        // TODO(jwwishart) parse_variable_declaration();
+                        var decl = new ast.VariableDeclaration();
+                        decl.identifier = identifier;
+                        // Optional Type ':' operator
+                        if (!infer_type) {
+                            if (accept(erg.TokenType.IDENTIFIER)) {
+                                decl.type = peek().text;
+                                eat(); // type
+                            }
+                            else {
+                                throw new Error("Parser Error: Unexpected token '" + erg.TokenType[peek().type] + "'");
+                            }
+                        }
+                        if (!infer_type) {
+                            // = 
+                            if (accept(erg.TokenType.OPERATOR) && peek().text === '=') {
+                                // TODO(jwwishart) parse_assignment(decl)
+                                throw new Error("ASSIGNMENTS: NOT IMPLEMENTED");
+                                return true;
+                            }
+                        }
+                        // Literal
+                        // TODO(jwwishart) parse_expression(decl);
+                        // ;
+                        if (accept(erg.TokenType.OPERATOR) && peek().text === ';') {
+                            context.add_item(decl);
+                            return true;
+                        }
+                        // TODO(jwwishart) make PARSER_ERROR() that outputs token info etc.....
+                        throw new Error("Parser Error: Unexpected token '" + erg.TokenType[peek().type] + "'");
+                    }
+                }
+                revert(loc);
+                return false;
+            }
+            function construct_identifier() {
+                var identifier = new ast.Identifier();
+                identifier.identifier = peek().text;
+                identifier.add_item(peek());
+                return identifier;
             }
             return {
                 parse_file: function (file) {
                     current_scope = file;
+                    // Eat any initial whitespace.
+                    if (peek().type === erg.TokenType.WHITESPACE || peek().type === erg.TokenType.COMMENTS) {
+                        eat();
+                    }
                     if (parse_statements(file))
                         return true;
                     file.success = false;

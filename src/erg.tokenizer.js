@@ -287,9 +287,10 @@ var erg;
             throw new Error("*** Compilation cancelled! ***");
         }
         return {
-            peek: function () {
+            peek: function (args) {
                 // Return previously peeked token.
                 //
+                if (args === void 0) { args = null; }
                 if (token !== null) {
                     return token;
                 }
@@ -314,14 +315,28 @@ var erg;
                 var lexeme = scanner.get_lexeme();
                 TOKEN_ERROR(lexeme, "Syntax error, unexpected token '" + lexeme.text + "'");
             },
-            eat: function () {
-                if (on_eat_callback != null) {
-                    on_eat_callback(token);
+            eat: function (args) {
+                while (true) {
+                    if (on_eat_callback != null) {
+                        on_eat_callback(token);
+                    }
+                    token = null;
+                    this.peek(); // Move to next token for test below!
+                    // Skip
+                    if (args) {
+                        if (args.skip_whitespace && token.type == TokenType.WHITESPACE)
+                            continue;
+                        if (args.skip_comments && token.type == TokenType.COMMENTS)
+                            continue;
+                    }
+                    return;
                 }
-                token = null;
             },
             on_eat: function (callback) {
                 on_eat_callback = callback;
+            },
+            revert_to: function (token) {
+                scanner.revert_position(token);
             }
         };
     };
