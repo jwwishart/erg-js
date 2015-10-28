@@ -189,23 +189,21 @@ module erg {
         }
 
         function handle_operators() {
-            var expected_operator = peek();
+            var looking_for = peek();
             var successful_operator = null;
             var start_pos = scanner.get_lexeme();
 
-            if (expected_operator == null) return false;
+            if (looking_for == null) return false;
 
             // TODO(jwwishart) parse operators propertly as we skip arrays... and 
             //  we need to scan further characters also
 
-            while (operators[expected_operator]) {
-                successful_operator = expected_operator;
+            while (operators[looking_for]) {
+                successful_operator = looking_for;
 
                 eat();
 
-                expected_operator += peek();
-
-                if (expected_operator == null) return false;
+                looking_for += peek();
             }
 
             if (successful_operator != null) {
@@ -214,6 +212,8 @@ module erg {
 
                 return true;
             }
+
+            scanner.revert_position(start_pos);
 
             return false;
         }
@@ -228,7 +228,8 @@ module erg {
                 if (depth === 0 && foundStart) break;
 
                 if (c === "{") {
-                        result += c;
+                    result += c;
+
                     if (foundStart === true) {
                     }
 
@@ -241,7 +242,7 @@ module erg {
                 if (c === "}" && foundStart) {
                     depth--;
 
-                        result += c;
+                    result += c;
                     if (depth !== 0) {
                     }
 

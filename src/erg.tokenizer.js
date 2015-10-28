@@ -135,25 +135,24 @@ var erg;
             return false;
         }
         function handle_operators() {
-            var expected_operator = peek();
+            var looking_for = peek();
             var successful_operator = null;
             var start_pos = scanner.get_lexeme();
-            if (expected_operator == null)
+            if (looking_for == null)
                 return false;
             // TODO(jwwishart) parse operators propertly as we skip arrays... and 
             //  we need to scan further characters also
-            while (erg.operators[expected_operator]) {
-                successful_operator = expected_operator;
+            while (erg.operators[looking_for]) {
+                successful_operator = looking_for;
                 eat();
-                expected_operator += peek();
-                if (expected_operator == null)
-                    return false;
+                looking_for += peek();
             }
             if (successful_operator != null) {
                 set_token(TokenType.OPERATOR, start_pos);
                 token.text = successful_operator; // Lexeme text by default. write identifier!
                 return true;
             }
+            scanner.revert_position(start_pos);
             return false;
         }
         function get_asm_block() {

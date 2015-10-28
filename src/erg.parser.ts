@@ -74,6 +74,19 @@ module erg {
 
         export class Identifier extends AstNode {
             identifier: string;
+            assignment: Expression
+        }
+
+        export class Expression extends AstNode {
+            terms: Array<Term>
+        }
+
+        export class Term extends AstNode {
+            factors: Array<Factor>
+        }
+
+        export class Factor extends AstNode {
+            // This could be anything :oS
         }
 
     }
@@ -149,17 +162,39 @@ module erg {
             //
 
             function parse_statements(context: ast.AstNode): boolean {
-                while (parse_statement(context)) {
-
+                while (parse_statement(context)) { 
                 }
 
-                return false;
+                return false; // TODO(jwwishart) think this is true? Maybe not??? may depend on parse_statements results???
             }
 
             function parse_statement(context: ast.AstNode): boolean {
                 let loc = peek();
 
                 if (parse_declaration(context)) return true;
+                if (parse_block(context)) return true;
+
+                // TODO(jwwishart) log parser error...
+
+                revert(loc);
+                return false;
+            }
+
+            function parse_block(context: ast.AstNode): boolean {
+                let loc = peek();
+
+                if (accept(TokenType.OPERATOR) && peek().text == '{') {
+                    eat(); //
+                    var scope = new ast.Scope();
+                    context.add_item(scope);
+
+                    parse_statements(scope);
+
+                    if (accept(TokenType.OPERATOR) && peek().text !== '}') {
+                        throw new Error("Expecting closing } for parse_block()");
+                    }
+                    return true;
+                }
 
                 revert(loc);
                 return false;
@@ -213,6 +248,8 @@ module erg {
                         var decl = new ast.VariableDeclaration();
                         decl.identifier = identifier;
 
+                        context.add_item(decl);
+
                         // Optional Type ':' operator
                         if (!infer_type) {
                             if (accept(TokenType.IDENTIFIER)) {
@@ -233,13 +270,11 @@ module erg {
                             }
                         }
 
-                        // Literal
-
-                        // TODO(jwwishart) parse_expression(decl);
+                        parse_expression(decl);
 
                         // ;
                         if (accept(TokenType.OPERATOR) && peek().text === ';') {
-                            context.add_item(decl);
+                            eat(); // ;                            
                             return true;
                         }
 
@@ -247,6 +282,115 @@ module erg {
                         throw new Error("Parser Error: Unexpected token '" + TokenType[peek().type] + "'");
                     }
                 }
+
+                revert(loc);
+                return false;
+            }
+
+            function parse_expression(context: ast.AstNode): boolean {
+                var loc = peek();
+
+                function is_add_op() {
+                    var type = peek().type;
+
+                    if (type === TokenType.OPERATOR
+                        && (peek().text == '+' || peek().text == '-'))
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                var expression = new ast.Expression();
+
+                if (parse_term(expression)) {
+                    while (is_add_op()) {
+                        eat(); // add-op
+
+                        if (!parse_term(expression)) {
+                            revert(loc);
+                            break;
+                        }
+
+                        loc = peek();
+                    }
+
+                    context.add_item(expression);
+
+                    return true;
+                }
+
+                revert(loc);
+                return false;
+            }
+
+            function parse_term(context: ast.Expression): boolean {
+                var loc = peek();
+
+                function is_mult_op() {
+                    var type = peek().type;
+
+                    if (type === TokenType.OPERATOR
+                        && (peek().text == '*' || peek().text == '/'))
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                var term = new ast.Term();
+
+                if (parse_factor(term)) {
+                    while (is_mult_op()) {
+                        eat(); // multi-op
+
+                        if (!parse_factor(term)) {
+                            revert(loc);
+                            break;
+                        }
+
+                        loc = peek();
+                    }
+
+                    context.add_item(term);
+
+                    return true;
+                }
+
+                revert(loc);
+                return false;
+            }
+
+            function parse_factor(context: ast.Term): boolean {
+                var loc = peek();
+
+                function create_factor(context: ast.Term, token: Token) {
+                    context.add_item(token);
+                    eat(); // token
+                    return true;
+                }
+
+                if (accept(TokenType.OPERATOR)) {
+                    if (peek().text === '---') {
+                        return create_factor(context, peek());
+                    }
+                }
+
+                if (accept(TokenType.LITERAL)) {
+                    if (peek().literal_type !== LiteralType.VOID) {
+                        return create_factor(context, peek());
+                    }
+                }
+
+                // TODO(jwwishart)
+                // - function call
+                // - identifier (i.e. referencing variable)
+                // - member_access_expression
+                // - assignment expression
+                // - unary expression
+                // - parenthesis
 
                 revert(loc);
                 return false;

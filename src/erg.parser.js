@@ -90,6 +90,30 @@ var erg;
             return Identifier;
         })(AstNode);
         ast.Identifier = Identifier;
+        var Expression = (function (_super) {
+            __extends(Expression, _super);
+            function Expression() {
+                _super.apply(this, arguments);
+            }
+            return Expression;
+        })(AstNode);
+        ast.Expression = Expression;
+        var Term = (function (_super) {
+            __extends(Term, _super);
+            function Term() {
+                _super.apply(this, arguments);
+            }
+            return Term;
+        })(AstNode);
+        ast.Term = Term;
+        var Factor = (function (_super) {
+            __extends(Factor, _super);
+            function Factor() {
+                _super.apply(this, arguments);
+            }
+            return Factor;
+        })(AstNode);
+        ast.Factor = Factor;
     })(ast = erg.ast || (erg.ast = {}));
     var default_parser;
     (function (default_parser) {
@@ -133,12 +157,30 @@ var erg;
             function parse_statements(context) {
                 while (parse_statement(context)) {
                 }
-                return false;
+                return false; // TODO(jwwishart) think this is true? Maybe not??? may depend on parse_statements results???
             }
             function parse_statement(context) {
                 var loc = peek();
                 if (parse_declaration(context))
                     return true;
+                if (parse_block(context))
+                    return true;
+                // TODO(jwwishart) log parser error...
+                revert(loc);
+                return false;
+            }
+            function parse_block(context) {
+                var loc = peek();
+                if (accept(erg.TokenType.OPERATOR) && peek().text == '{') {
+                    eat(); //
+                    var scope = new ast.Scope();
+                    context.add_item(scope);
+                    parse_statements(scope);
+                    if (accept(erg.TokenType.OPERATOR) && peek().text !== '}') {
+                        throw new Error("Expecting closing } for parse_block()");
+                    }
+                    return true;
+                }
                 revert(loc);
                 return false;
             }
@@ -178,6 +220,7 @@ var erg;
                         // TODO(jwwishart) parse_variable_declaration();
                         var decl = new ast.VariableDeclaration();
                         decl.identifier = identifier;
+                        context.add_item(decl);
                         // Optional Type ':' operator
                         if (!infer_type) {
                             if (accept(erg.TokenType.IDENTIFIER)) {
@@ -196,17 +239,95 @@ var erg;
                                 return true;
                             }
                         }
-                        // Literal
-                        // TODO(jwwishart) parse_expression(decl);
+                        parse_expression(decl);
                         // ;
                         if (accept(erg.TokenType.OPERATOR) && peek().text === ';') {
-                            context.add_item(decl);
+                            eat(); // ;                            
                             return true;
                         }
                         // TODO(jwwishart) make PARSER_ERROR() that outputs token info etc.....
                         throw new Error("Parser Error: Unexpected token '" + erg.TokenType[peek().type] + "'");
                     }
                 }
+                revert(loc);
+                return false;
+            }
+            function parse_expression(context) {
+                var loc = peek();
+                function is_add_op() {
+                    var type = peek().type;
+                    if (type === erg.TokenType.OPERATOR
+                        && (peek().text == '+' || peek().text == '-')) {
+                        return true;
+                    }
+                    return false;
+                }
+                var expression = new ast.Expression();
+                if (parse_term(expression)) {
+                    while (is_add_op()) {
+                        eat(); // add-op
+                        if (!parse_term(expression)) {
+                            revert(loc);
+                            break;
+                        }
+                        loc = peek();
+                    }
+                    context.add_item(expression);
+                    return true;
+                }
+                revert(loc);
+                return false;
+            }
+            function parse_term(context) {
+                var loc = peek();
+                function is_mult_op() {
+                    var type = peek().type;
+                    if (type === erg.TokenType.OPERATOR
+                        && (peek().text == '*' || peek().text == '/')) {
+                        return true;
+                    }
+                    return false;
+                }
+                var term = new ast.Term();
+                if (parse_factor(term)) {
+                    while (is_mult_op()) {
+                        eat(); // multi-op
+                        if (!parse_factor(term)) {
+                            revert(loc);
+                            break;
+                        }
+                        loc = peek();
+                    }
+                    context.add_item(term);
+                    return true;
+                }
+                revert(loc);
+                return false;
+            }
+            function parse_factor(context) {
+                var loc = peek();
+                function create_factor(context, token) {
+                    context.add_item(token);
+                    eat(); // token
+                    return true;
+                }
+                if (accept(erg.TokenType.OPERATOR)) {
+                    if (peek().text === '---') {
+                        return create_factor(context, peek());
+                    }
+                }
+                if (accept(erg.TokenType.LITERAL)) {
+                    if (peek().literal_type !== erg.LiteralType.VOID) {
+                        return create_factor(context, peek());
+                    }
+                }
+                // TODO(jwwishart)
+                // - function call
+                // - identifier (i.e. referencing variable)
+                // - member_access_expression
+                // - assignment expression
+                // - unary expression
+                // - parenthesis
                 revert(loc);
                 return false;
             }
